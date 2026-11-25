@@ -1,0 +1,2718 @@
+<title>星際突襲：深空防線 - 階段四：3分鐘關卡與利維坦Boss戰</title>
+    <!-- 引入 Tailwind CSS 用於高效率科幻 HUD 介面 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Three.js 核心庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- 引入 Three.js 後處理輝光管線 (EffectComposer & UnrealBloomPass) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <!-- 引入 GLTFLoader 預留外部 Tripo/Meshy .glb 3D 模型導入管線 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- 引入 Tone.js 用於無外部依賴的動態合成音效 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+TC:wght@400;700&display=swap');
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #02040a;
+            font-family: 'Orbitron', 'Noto Sans TC', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 科幻霓虹發光文字效果 */
+        .neon-text-cyan {
+            text-shadow: 0 0 8px rgba(34, 211, 238, 0.8), 0 0 16px rgba(34, 211, 238, 0.4);
+        }
+        .neon-text-pink {
+            text-shadow: 0 0 8px rgba(244, 63, 94, 0.8), 0 0 16px rgba(244, 63, 94, 0.4);
+        }
+        .neon-border {
+            box-shadow: 0 0 12px rgba(34, 211, 238, 0.3), inset 0 0 8px rgba(34, 211, 238, 0.2);
+        }
+
+        /* 掃描線濾鏡增加賽博科幻感 */
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.15) 50%,
+                rgba(0,0,0,0.15)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Three.js 渲染畫布將掛載於此 -->
+    <div id="canvas-wrapper" class="w-full h-full"></div>
+
+    <!-- 螢幕掃描線視覺層 -->
+    <div class="scanlines absolute inset-0 z-10"></div>
+
+    <!-- 遊戲內 HUD 抬頭顯示器 -->
+    <div id="hud-layer" class="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 sm:p-6 hidden">
+        <!-- 頂部狀態列 -->
+        <div class="flex justify-between items-start w-full">
+            <!-- 左上角：機體裝甲、武器等級與 EMP 能量 -->
+            <div class="bg-slate-900/75 backdrop-blur-md border border-cyan-500/40 rounded-xl p-3 sm:p-4 neon-border w-52 sm:w-68">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs text-cyan-400 tracking-wider font-bold">HULL INTEGRITY</span>
+                    <span id="hp-text" class="text-xs sm:text-sm font-bold text-white">100%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden mb-2.5 border border-slate-700">
+                    <div id="hp-bar" class="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full transition-all duration-200" style="width: 100%;"></div>
+                </div>
+
+                <!-- 武器進化等級顯示 -->
+                <div class="flex justify-between items-center mb-2.5 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-rose-500/30">
+                    <span class="text-xs text-rose-400 font-bold tracking-wider">WEAPON SYS</span>
+                    <span id="weapon-level-text" class="text-xs sm:text-sm font-black text-rose-300 neon-text-pink">LV.1 基礎脈衝</span>
+                </div>
+
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs text-amber-400 tracking-wider font-bold">EMP OVERDRIVE</span>
+                    <span id="emp-text" class="text-xs font-bold text-amber-300">READY</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700">
+                    <div id="emp-bar" class="bg-gradient-to-r from-amber-500 to-yellow-300 h-full transition-all duration-150" style="width: 100%;"></div>
+                </div>
+
+                <!-- 撞擊障礙物後的引擎減速狀態提示 -->
+                <div id="slow-warning" class="hidden mt-2 bg-amber-950/90 border border-amber-500/80 rounded-lg px-2 py-1 text-center animate-pulse">
+                    <span class="text-[10px] font-black text-amber-300 tracking-wider">⚠️ ENGINE SLOWDOWN (-55%)</span>
+                </div>
+            </div>
+
+            <!-- 頂部中央：關卡時間軸進度與階段指示 / Boss 血條 -->
+            <div class="flex flex-col items-center mx-2 flex-1 max-w-md">
+                <div class="bg-slate-900/80 backdrop-blur-md border border-cyan-500/40 rounded-xl px-4 py-2 neon-border w-full text-center">
+                    <div class="flex justify-between items-center text-[11px] font-bold tracking-widest mb-1">
+                        <span id="phase-name" class="text-cyan-300">PHASE 01 // 雲海突入</span>
+                        <span id="stage-timer" class="text-white font-mono">00:00 / 03:00</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden border border-slate-700">
+                        <div id="timeline-bar" class="bg-gradient-to-r from-cyan-400 via-indigo-400 to-rose-500 h-full transition-all duration-200" style="width: 0%;"></div>
+                    </div>
+                </div>
+
+                <!-- 利維坦 Boss 專屬雙階段血條（Boss 登場時顯示） -->
+                <div id="boss-hud" class="hidden mt-2 bg-slate-950/90 backdrop-blur-md border border-rose-500/70 rounded-xl p-2.5 w-full shadow-lg shadow-rose-500/20">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[11px] font-black text-rose-400 tracking-wider neon-text-pink">☠️ 利維坦級空天母艦</span>
+                        <span id="boss-phase-label" class="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/40">階段一：防空砲台 (4/4)</span>
+                    </div>
+                    <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-rose-900">
+                        <div id="boss-hp-bar" class="bg-gradient-to-r from-rose-600 via-orange-500 to-amber-400 h-full transition-all duration-150" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右上角：分數與連擊 -->
+            <div class="bg-slate-900/75 backdrop-blur-md border border-cyan-500/40 rounded-xl p-3 sm:p-4 neon-border text-right">
+                <div class="text-xs text-cyan-400 tracking-widest mb-0.5">SCORE</div>
+                <div id="score-display" class="text-2xl sm:text-3xl font-black text-white neon-text-cyan tracking-wider">000000</div>
+                <div id="combo-display" class="text-xs sm:text-sm font-bold text-rose-400 mt-1 opacity-0 transition-opacity duration-200">
+                    COMBO x<span id="combo-count">1</span>
+                </div>
+                <div id="shield-badge" class="hidden mt-1.5 inline-block px-2 py-0.5 rounded bg-cyan-500/30 border border-cyan-400 text-[10px] font-bold text-cyan-200 animate-pulse">
+                    🛡️ EMP SHIELD ACTIVE
+                </div>
+            </div>
+        </div>
+
+        <!-- 螢幕中央動態事件橫幅 / WARNING 警報 -->
+        <div id="event-banner" class="hidden self-center my-auto text-center pointer-events-none">
+            <div id="event-banner-box" class="bg-rose-950/85 border-2 border-rose-500 px-8 py-4 rounded-2xl shadow-2xl shadow-rose-500/40 animate-pulse">
+                <div id="event-banner-title" class="text-2xl sm:text-4xl font-black text-rose-400 tracking-widest neon-text-pink">⚠️ WARNING ⚠️</div>
+                <div id="event-banner-sub" class="text-xs sm:text-sm font-bold text-white tracking-wider mt-1">偵測到超大型重力反應：利維坦級空天母艦接近中</div>
+            </div>
+        </div>
+
+        <!-- 底部控制提示與 EMP 手動觸發按鈕（支援手機與滑鼠點擊） -->
+        <div class="flex justify-between items-end w-full">
+            <div class="hidden sm:block bg-slate-900/60 backdrop-blur-sm border border-slate-700/60 rounded-lg px-3 py-2 text-xs text-slate-300 space-y-1">
+                <div><span class="text-cyan-400 font-bold">[WASD / 方向鍵 / 滑鼠拖曳]</span> 戰機機動</div>
+                <div><span class="text-cyan-400 font-bold">[空白鍵 / 滑鼠左鍵]</span> 脈衝雷射連射</div>
+                <div><span class="text-amber-400 font-bold">[SHIFT / 滑鼠右鍵]</span> 釋放全屏 EMP 衝擊波</div>
+            </div>
+
+            <!-- 互動按鈕區 -->
+            <div class="pointer-events-auto flex items-center gap-3 ml-auto">
+                <button id="btn-bloom" class="bg-slate-900/80 hover:bg-slate-800 text-cyan-300 font-bold py-3 px-4 rounded-xl border border-cyan-500/40 shadow-lg transition-all text-xs sm:text-sm tracking-wider cursor-pointer">
+                    ✨ BLOOM: ON
+                </button>
+                <button id="btn-emp" class="bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 active:scale-95 text-white font-bold py-3 px-5 rounded-xl border border-amber-300/60 shadow-lg shadow-amber-500/30 transition-all text-sm sm:text-base tracking-wider cursor-pointer">
+                    ⚡ EMP 衝擊波
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 遊戲開始 / 結束覆蓋選單 -->
+    <div id="menu-overlay" class="absolute inset-0 z-30 bg-slate-950/75 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+        <div class="max-w-lg w-full bg-slate-900/90 border border-cyan-500/50 rounded-2xl p-6 sm:p-8 neon-border">
+            <div class="inline-block px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-bold tracking-widest mb-3">
+                STAGE 04 // 3-MIN TIMELINE & LEVIATHAN BOSS
+            </div>
+            <h1 class="text-3xl sm:text-4xl font-black text-white neon-text-cyan mb-2 tracking-wide">
+                星際突襲：深空防線
+            </h1>
+            <p id="menu-subtitle" class="text-slate-300 text-sm sm:text-base mb-6">
+                第四階段完整關卡 — 突破 3 分鐘五階段防線，擊潰雙階段巨型 Boss「利維坦級空天母艦」！
+            </p>
+
+            <!-- 結算分數面板（僅在 Game Over 或通關勝利時顯示） -->
+            <div id="gameover-stats" class="hidden bg-slate-950/80 border border-rose-500/40 rounded-xl p-4 mb-6">
+                <div id="result-title" class="text-rose-400 font-bold text-lg mb-1 neon-text-pink">機體受損嚴重 // 任務終止</div>
+                <div class="text-slate-300 text-sm">最終作戰積分：<span id="final-score" class="text-2xl font-black text-white ml-2">0</span></div>
+            </div>
+
+            <button id="btn-start" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 active:scale-98 text-slate-950 font-black text-lg py-4 px-8 rounded-xl shadow-lg shadow-cyan-500/40 transition-all tracking-widest cursor-pointer">
+                啟動引擎 // 出擊
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * 《星際突襲：深空防線》第四階段：3 分鐘關卡時間軸與巨型 Boss「利維坦級空天母艦」
+ * 核心升級：
+ * 1. 精準 3 分鐘（180 秒）五階段時間軸腳本（雲海突入 -> 防空走廊 -> 隕石火網 -> 補給預警 -> Boss 戰）
+ * 2. 動態環境氛圍與攝影機調度（防空走廊高塔收窄、火網暗紅警報光影、Boss 戰攝影機拉遠）
+ * 3. 「利維坦級空天母艦」雙階段頭目戰：階段一摧毀 4 座兩翼防空砲台 -> 階段二裝甲展開露出核心發射雙螺旋彈幕
+ */
+
+// ==================== 全域狀態與配置 ====================
+const CONFIG = {
+    playfieldWidth: 28,      // 戰機可移動 X 軸半寬
+    playfieldDepthMin: -12,  // 戰機可移動 Z 軸最遠端（螢幕上方）
+    playfieldDepthMax: 16,   // 戰機可移動 Z 軸最近端（螢幕下方）
+    bulletPoolSize: 220,     // 玩家子彈與浮游砲雷射物件池容量
+    missilePoolSize: 30,     // Lv.3 追蹤微飛彈物件池容量
+    enemyBulletPoolSize: 220,// 敵方彈幕與 Boss 螺旋彈幕物件池容量
+    enemyPoolSize: 45,       // 敵機物件池容量
+    asteroidPoolSize: 28,    // 隕石帶物件池容量
+    obstaclePoolSize: 20,    // 太空防禦障礙物（能量柵欄/重裝浮標）物件池容量
+    particlePoolSize: 280,   // 爆炸與飛彈煙霧粒子物件池容量
+    pickupPoolSize: 45,      // 紅色能量核、護盾修復包與 EMP 加分粒物件池容量
+    fireRate: 0.11,          // 射擊間隔（秒）
+    missileInterval: 0.8,    // Lv.3 追蹤飛彈發射間隔（秒）
+    empCooldown: 8.0,        // EMP 大招冷卻時間（秒）
+    bloomEnabled: true       // 後處理輝光開關
+};
+
+// 第四階段：3 分鐘關卡時間軸腳本（Timeline JSON 結構）
+const STAGE_TIMELINE = [
+    {
+        id: 'phase1',
+        start: 0,
+        end: 30,
+        name: 'PHASE 01 // 雲海突入',
+        spawnInterval: 1.25,
+        weights: ['scout', 'scout', 'scout', 'gunship'],
+        fogColor: 0x03091a,
+        fogDensity: 0.011,
+        corridorNarrow: false
+    },
+    {
+        id: 'phase2',
+        start: 30,
+        end: 75,
+        name: 'PHASE 02 // 防空走廊',
+        spawnInterval: 1.0,
+        weights: ['gunship', 'interceptor', 'scout', 'interceptor'],
+        fogColor: 0x050818,
+        fogDensity: 0.013,
+        corridorNarrow: true
+    },
+    {
+        id: 'phase3',
+        start: 75,
+        end: 105,
+        name: 'PHASE 03 // 隕石與防空火網',
+        spawnInterval: 0.72,
+        weights: ['scout', 'interceptor', 'scout', 'gunship'],
+        fogColor: 0x1c050a, // 環境光轉為暗紅色警報氛圍
+        fogDensity: 0.015,
+        corridorNarrow: true,
+        asteroidsActive: true
+    },
+    {
+        id: 'phase4',
+        start: 105,
+        end: 120,
+        name: 'PHASE 04 // 補給與 BOSS 預警',
+        spawnInterval: 999, // 清場空檔期，不刷普通雜兵
+        weights: [],
+        fogColor: 0x140414,
+        fogDensity: 0.012,
+        corridorNarrow: false,
+        bossWarning: true
+    },
+    {
+        id: 'phase5',
+        start: 120,
+        end: 180,
+        name: 'PHASE 05 // 利維坦級空天母艦',
+        spawnInterval: 4.5, // Boss 戰期間偶爾支援少量偵察機補充 EMP 能量
+        weights: ['scout'],
+        fogColor: 0x0d0418,
+        fogDensity: 0.011,
+        corridorNarrow: false,
+        bossFight: true
+    }
+];
+
+const WEAPON_NAMES = [
+    "LV.1 基礎脈衝",
+    "LV.2 擴散電漿",
+    "LV.3 追蹤飛彈",
+    "LV.4 浮游砲陣列"
+];
+
+let gameState = {
+    isPlaying: false,
+    stageTime: 0,            // 關卡經過秒數 (0 ~ 180)
+    currentPhaseId: '',
+    supplyDropped: false,    // 1:45 補給空投是否已觸發
+    bossWarningTriggered: false,
+    score: 0,
+    combo: 0,
+    comboTimer: 0,
+    hp: 100,
+    weaponLevel: 1,          // 1 ~ 4
+    empCharge: 100,          // 0 ~ 100
+    invincibleTimer: 0,      // 無敵護盾剩餘時間（秒）
+    slowdownTimer: 0,        // 撞擊障礙物後的引擎減速剩餘時間（秒）
+    lastFireTime: 0,
+    lastMissileTime: 0,
+    lastSpawnTime: 0,
+    lastAsteroidTime: 0,
+    lastObstacleTime: 0,
+    cameraShake: 0,
+    targetCamY: 26,
+    targetCamZ: 26
+};
+
+// 輸入控制狀態
+const input = {
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    fire: false,
+    pointerActive: false,
+    targetX: 0,
+    targetZ: 8
+};
+
+// Three.js 核心與後處理變數
+let scene, camera, renderer, composer, bloomPass, clock;
+let ambientLight, dirLight, rimLight;
+let playerGroup, engineFlameLeft, engineFlameRight, engineCoreLeft, engineCoreRight;
+let playerShieldMesh, funnelLeft, funnelRight;
+let gridHelper1, gridHelper2;
+const envBuildings = [];
+const highAltitudeClouds = [];
+
+// 物件池陣列
+const bulletPool = [];
+const missilePool = [];
+const enemyBulletPool = [];
+const enemyPool = [];
+const asteroidPool = [];
+const obstaclePool = [];
+const particlePool = [];
+const pickupPool = [];
+let empWaveMesh = null;
+let empWaveActive = false;
+let empWaveRadius = 0;
+
+// 巨型 Boss「利維坦級空天母艦」狀態物件
+let leviathanBoss = {
+    group: null,
+    leftArmorWing: null,
+    rightArmorWing: null,
+    coreMesh: null,
+    coreMat: null,
+    turrets: [],             // 階段一：4 座防空砲台
+    active: false,
+    phase: 1,                // 1: 摧毀4座砲台 | 2: 裝甲展開核心旋轉彈幕
+    coreHp: 1800,
+    maxCoreHp: 1800,
+    attackTimer: 0,
+    spiralAngle: 0,
+    hitFlashTimer: 0
+};
+
+// 音效合成器 (Tone.js)
+let audioInitialized = false;
+let laserSynth, explosionSynth, empSynth, powerupSynth, alarmSynth;
+let lastLaserTime = 0, lastExplosionTime = 0, lastEmpTime = 0, lastPowerupTime = 0, lastAlarmTime = 0;
+
+// ==================== 初始化 Three.js 場景 ====================
+function initThreeJS() {
+    const container = document.getElementById('canvas-wrapper');
+
+    // 1. 建立場景與深空指數霧效 (FogExp2)
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x03091a);
+    scene.fog = new THREE.FogExp2(0x03091a, 0.011);
+
+    // 2. 建立 2.5D 俯視斜角透視攝影機 (FOV 60)
+    const aspect = container.clientWidth / container.clientHeight;
+    camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 240);
+    camera.position.set(0, 26, 26); // 架設於戰機後方斜上方
+    camera.lookAt(0, 0, -4);
+
+    // 3. 初始化 WebGL 渲染器（開啟 ACESFilmic 色調映射提升霓虹輝光層次）
+    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    container.appendChild(renderer.domElement);
+
+    // 4. 設定後處理通道 (EffectComposer + UnrealBloomPass)
+    setupPostProcessing(container.clientWidth, container.clientHeight);
+
+    clock = new THREE.Clock();
+
+    // 5. 多層次 PBR 環境光照系統
+    ambientLight = new THREE.AmbientLight(0x1e293b, 1.1);
+    scene.add(ambientLight);
+
+    dirLight = new THREE.DirectionalLight(0xe0f2fe, 1.5);
+    dirLight.position.set(15, 38, 22);
+    scene.add(dirLight);
+
+    rimLight = new THREE.DirectionalLight(0xf43f5e, 0.9);
+    rimLight.position.set(-22, 12, -25);
+    scene.add(rimLight);
+
+    const underGlow = new THREE.PointLight(0x06b6d4, 1.2, 45);
+    underGlow.position.set(0, -2, 6);
+    scene.add(underGlow);
+
+    // 6. 建置無限滾動地面網格、高空視差雲層與低多邊形環境建築
+    createEnvironment();
+
+    // 7. 建置高精度賽博主角戰機（並預留外部 .glb 模型載入介面）
+    createPlayerShip();
+
+    // 8. 建置巨型 Boss「利維坦級空天母艦」3D 模型與雙階段組件
+    createLeviathanBoss();
+
+    // 9. 預先建立所有物件池 (Object Pools)
+    initObjectPools();
+
+    // 10. 綁定事件監聽
+    setupEventListeners();
+}
+
+// 初始化 UnrealBloomPass 後處理管線（Step 2.3）
+function setupPostProcessing(width, height) {
+    try {
+        const renderScene = new THREE.RenderPass(scene, camera);
+        // 參數：解析度、輝光強度(strength)、半徑(radius)、發光閾值(threshold)
+        bloomPass = new THREE.UnrealBloomPass(
+            new THREE.Vector2(width, height),
+            0.85,  // 適中輝光強度，避免白色過曝
+            0.45,  // 光暈擴散半徑
+            0.72   // 僅讓高自發光物體（雷射、引擎、核心）產生輝光
+        );
+
+        composer = new THREE.EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+    } catch (e) {
+        console.warn("後處理管線初始化失敗，自動切換至標準渲染模式:", e);
+        CONFIG.bloomEnabled = false;
+    }
+}
+
+// 建立無限循環霓虹網格、浮空建築群與高空視差星雲
+function createEnvironment() {
+    // 雙網格拼接實現無縫無限滾動
+    const gridSize = 160;
+    const divisions = 40;
+    gridHelper1 = new THREE.GridHelper(gridSize, divisions, 0x0891b2, 0x091124);
+    gridHelper1.position.y = -4;
+    gridHelper1.position.z = -40;
+    scene.add(gridHelper1);
+
+    gridHelper2 = new THREE.GridHelper(gridSize, divisions, 0x0891b2, 0x091124);
+    gridHelper2.position.y = -4;
+    gridHelper2.position.z = -40 - gridSize;
+    scene.add(gridHelper2);
+
+    // 生成兩側低多邊形 (Low-Poly) 科幻建築群，帶霓虹窗格自發光
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+    const buildingMat = new THREE.MeshStandardMaterial({
+        color: 0x090d1a,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.35,
+        roughness: 0.25,
+        metalness: 0.85
+    });
+
+    for (let i = 0; i < 45; i++) {
+        const mesh = new THREE.Mesh(boxGeo, buildingMat);
+        resetBuildingPosition(mesh, true);
+        scene.add(mesh);
+        envBuildings.push(mesh);
+    }
+
+    // 新增高空視差流光/雲層粒子（位於戰機上方 y = 4~9，快速掠過營造極強速度感）
+    const streakGeo = new THREE.BoxGeometry(0.12, 0.12, 4.5);
+    const streakMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.32
+    });
+
+    for (let i = 0; i < 32; i++) {
+        const streak = new THREE.Mesh(streakGeo, streakMat);
+        streak.position.set(
+            (Math.random() - 0.5) * 70,
+            3 + Math.random() * 7,
+            -120 + Math.random() * 160
+        );
+        scene.add(streak);
+        highAltitudeClouds.push({
+            mesh: streak,
+            speedMultiplier: 1.5 + Math.random() * 0.8
+        });
+    }
+}
+
+function resetBuildingPosition(mesh, initial = false) {
+    // 依當前是否處於「防空走廊」階段動態調整高塔距離，營造空間壓迫感
+    const activePhase = getCurrentTimelinePhase();
+    const isNarrow = activePhase && activePhase.corridorNarrow;
+    const minOffset = isNarrow ? 17.5 : 23;
+    const side = Math.random() > 0.5 ? 1 : -1;
+    const xOffset = minOffset + Math.random() * 42;
+    mesh.position.x = side * xOffset;
+    
+    const height = (isNarrow ? 10 : 5) + Math.random() * 22;
+    const width = 3 + Math.random() * 5.5;
+    mesh.scale.set(width, height, width);
+    mesh.position.y = -4 + height / 2;
+    mesh.position.z = initial ? (-140 + Math.random() * 180) : (-140 - Math.random() * 40);
+}
+
+// 建立高精度賽博科幻戰機模型（Step 2.1 & 2.2 標準化朝向 -Z）
+function createPlayerShip() {
+    playerGroup = new THREE.Group();
+
+    // 高反光賽博金屬材質
+    const primaryArmorMat = new THREE.MeshStandardMaterial({
+        color: 0xf1f5f9,
+        metalness: 0.82,
+        roughness: 0.18
+    });
+    const darkCarbonMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        metalness: 0.7,
+        roughness: 0.35
+    });
+    const neonTrimMat = new THREE.MeshStandardMaterial({
+        color: 0x06b6d4,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 1.4, // 觸發 UnrealBloom 輝光
+        roughness: 0.2
+    });
+    const canopyMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.9,
+        metalness: 0.9,
+        roughness: 0.08
+    });
+
+    // 1. 流線型中央機身脊柱（指向 -Z）
+    const noseGeo = new THREE.ConeGeometry(0.75, 4.6, 6);
+    noseGeo.rotateX(-Math.PI / 2);
+    const noseMesh = new THREE.Mesh(noseGeo, primaryArmorMat);
+    noseMesh.scale.set(1.1, 0.55, 1);
+    noseMesh.position.set(0, 0, -0.3);
+    playerGroup.add(noseMesh);
+
+    // 2. 碳纖維進氣道裝甲側莢
+    const intakeGeo = new THREE.BoxGeometry(0.55, 0.42, 2.4);
+    const leftIntake = new THREE.Mesh(intakeGeo, darkCarbonMat);
+    leftIntake.position.set(-0.75, -0.05, 0.4);
+    playerGroup.add(leftIntake);
+
+    const rightIntake = new THREE.Mesh(intakeGeo, darkCarbonMat);
+    rightIntake.position.set(0.75, -0.05, 0.4);
+    playerGroup.add(rightIntake);
+
+    // 3. 流線型水滴駕駛艙罩
+    const canopyGeo = new THREE.SphereGeometry(0.42, 16, 12);
+    canopyGeo.scale(0.85, 0.65, 2.2);
+    const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+    canopy.position.set(0, 0.28, -0.35);
+    playerGroup.add(canopy);
+
+    // 4. 雙層前掠主翼與霓虹能量導光條
+    const wingGeo = new THREE.BoxGeometry(5.2, 0.1, 1.4);
+    const mainWing = new THREE.Mesh(wingGeo, primaryArmorMat);
+    mainWing.position.set(0, 0, 0.55);
+    playerGroup.add(mainWing);
+
+    const neonStripGeo = new THREE.BoxGeometry(5.3, 0.06, 0.18);
+    const neonStrip = new THREE.Mesh(neonStripGeo, neonTrimMat);
+    neonStrip.position.set(0, 0.03, 0.05);
+    playerGroup.add(neonStrip);
+
+    // 5. 翼尖雙聯裝脈衝雷射砲管
+    const cannonGeo = new THREE.CylinderGeometry(0.09, 0.12, 1.8, 8);
+    cannonGeo.rotateX(Math.PI / 2);
+    const leftCannon = new THREE.Mesh(cannonGeo, darkCarbonMat);
+    leftCannon.position.set(-2.5, 0, 0.1);
+    playerGroup.add(leftCannon);
+
+    const rightCannon = new THREE.Mesh(cannonGeo, darkCarbonMat);
+    rightCannon.position.set(2.5, 0, 0.1);
+    playerGroup.add(rightCannon);
+
+    // 6. 外傾雙垂直尾翼
+    const tailGeo = new THREE.BoxGeometry(0.1, 0.95, 1.1);
+    const leftTail = new THREE.Mesh(tailGeo, darkCarbonMat);
+    leftTail.position.set(-1.1, 0.42, 1.25);
+    leftTail.rotation.z = 0.32;
+    playerGroup.add(leftTail);
+
+    const rightTail = new THREE.Mesh(tailGeo, darkCarbonMat);
+    rightTail.position.set(1.1, 0.42, 1.25);
+    rightTail.rotation.z = -0.32;
+    playerGroup.add(rightTail);
+
+    // 7. 雙渦輪推進噴口與高發光等離子尾焰（觸發強烈 Bloom 輝光）
+    const nozzleGeo = new THREE.CylinderGeometry(0.32, 0.26, 0.5, 12);
+    nozzleGeo.rotateX(Math.PI / 2);
+    const leftNozzle = new THREE.Mesh(nozzleGeo, darkCarbonMat);
+    leftNozzle.position.set(-0.55, 0, 1.75);
+    playerGroup.add(leftNozzle);
+
+    const rightNozzle = new THREE.Mesh(nozzleGeo, darkCarbonMat);
+    rightNozzle.position.set(0.55, 0, 1.75);
+    playerGroup.add(rightNozzle);
+
+    const outerFlameGeo = new THREE.ConeGeometry(0.28, 1.8, 10);
+    outerFlameGeo.rotateX(Math.PI / 2);
+    const outerFlameMat = new THREE.MeshStandardMaterial({
+        color: 0x06b6d4,
+        emissive: 0x22d3ee,
+        emissiveIntensity: 2.2,
+        transparent: true,
+        opacity: 0.85
+    });
+
+    const innerCoreGeo = new THREE.ConeGeometry(0.14, 1.1, 8);
+    innerCoreGeo.rotateX(Math.PI / 2);
+    const innerCoreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    engineFlameLeft = new THREE.Mesh(outerFlameGeo, outerFlameMat);
+    engineFlameLeft.position.set(-0.55, 0, 2.65);
+    playerGroup.add(engineFlameLeft);
+
+    engineCoreLeft = new THREE.Mesh(innerCoreGeo, innerCoreMat);
+    engineCoreLeft.position.set(-0.55, 0, 2.35);
+    playerGroup.add(engineCoreLeft);
+
+    engineFlameRight = new THREE.Mesh(outerFlameGeo, outerFlameMat);
+    engineFlameRight.position.set(0.55, 0, 2.65);
+    playerGroup.add(engineFlameRight);
+
+    engineCoreRight = new THREE.Mesh(innerCoreGeo, innerCoreMat);
+    engineCoreRight.position.set(0.55, 0, 2.35);
+    playerGroup.add(engineCoreRight);
+
+    // 8. Lv.4 浮游砲陣列（預設隱藏，武器升至 Lv.4 時展開並旋轉）
+    const funnelGeo = new THREE.OctahedronGeometry(0.45, 1);
+    const funnelMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: 0x0ea5e9,
+        emissiveIntensity: 2.0,
+        metalness: 0.8,
+        roughness: 0.1
+    });
+    funnelLeft = new THREE.Mesh(funnelGeo, funnelMat);
+    funnelLeft.position.set(-3.4, 0.2, 0.2);
+    funnelLeft.visible = false;
+    playerGroup.add(funnelLeft);
+
+    funnelRight = new THREE.Mesh(funnelGeo, funnelMat);
+    funnelRight.position.set(3.4, 0.2, 0.2);
+    funnelRight.visible = false;
+    playerGroup.add(funnelRight);
+
+    // 9. EMP 2 秒無敵球形護盾特效
+    const shieldGeo = new THREE.SphereGeometry(3.2, 24, 18);
+    const shieldMat = new THREE.MeshStandardMaterial({
+        color: 0x22d3ee,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 1.4,
+        transparent: true,
+        opacity: 0.28,
+        wireframe: true
+    });
+    playerShieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+    playerShieldMesh.visible = false;
+    playerGroup.add(playerShieldMesh);
+
+    playerGroup.position.set(0, 0, 8);
+    scene.add(playerGroup);
+}
+
+/**
+ * [Step 2.2 預留外部模型導入管線]
+ * 若未來使用 Tripo AI / Meshy AI 生成了 Draco 壓縮的 player.glb，
+ * 可直接呼叫此函式無縫替換白模/程序化戰機，並自動標準化縮放與朝向。
+ */
+function loadExternalGLBModel(url, targetGroup, targetScale = 1.0) {
+    if (!THREE.GLTFLoader) return;
+    const loader = new THREE.GLTFLoader();
+    loader.load(url, (gltf) => {
+        while (targetGroup.children.length > 0) {
+            targetGroup.remove(targetGroup.children[0]);
+        }
+        const model = gltf.scene;
+        model.scale.set(targetScale, targetScale, targetScale);
+        targetGroup.add(model);
+    }, undefined, (err) => {
+        console.warn("外部 GLB 模型載入失敗，維持內建高精度模型:", err);
+    });
+}
+
+// 建置三種不同類型的異星敵機 3D 模型（偵察機 / 重裝砲艇 / 攔截機）
+function createEnemyMeshByType(type) {
+    const group = new THREE.Group();
+
+    const hullMat = new THREE.MeshStandardMaterial({
+        color: 0x1e1b2e,
+        metalness: 0.75,
+        roughness: 0.25
+    });
+
+    const coreMat = new THREE.MeshStandardMaterial({
+        color: type === 'gunship' ? 0xf97316 : (type === 'interceptor' ? 0xd946ef : 0xf43f5e),
+        emissive: type === 'gunship' ? 0xea580c : (type === 'interceptor' ? 0xc026d3 : 0xe11d48),
+        emissiveIntensity: 1.6, // 觸發 Bloom 輝光
+        roughness: 0.2
+    });
+
+    if (type === 'gunship') {
+        // 重裝砲艇：寬大裝甲六邊形雙體船
+        const bodyGeo = new THREE.CylinderGeometry(1.6, 1.3, 0.8, 6);
+        const body = new THREE.Mesh(bodyGeo, hullMat);
+        group.add(body);
+
+        const wingGeo = new THREE.BoxGeometry(4.4, 0.35, 1.4);
+        const wing = new THREE.Mesh(wingGeo, hullMat);
+        group.add(wing);
+
+        const coreGeo = new THREE.SphereGeometry(0.75, 12, 12);
+        const core = new THREE.Mesh(coreGeo, coreMat);
+        core.position.y = 0.3;
+        group.add(core);
+    } else if (type === 'interceptor') {
+        // 激光攔截機：銳利雙叉戟前掠造型
+        const spearGeo = new THREE.ConeGeometry(0.65, 3.6, 4);
+        spearGeo.rotateX(Math.PI / 2); // 朝向 +Z 玩家方向
+        const leftSpear = new THREE.Mesh(spearGeo, hullMat);
+        leftSpear.position.set(-0.9, 0, 0);
+        group.add(leftSpear);
+
+        const rightSpear = new THREE.Mesh(spearGeo, hullMat);
+        rightSpear.position.set(0.9, 0, 0);
+        group.add(rightSpear);
+
+        const bridgeGeo = new THREE.BoxGeometry(2.2, 0.25, 0.8);
+        const bridge = new THREE.Mesh(bridgeGeo, coreMat);
+        group.add(bridge);
+    } else {
+        // 偵察無人機：高速菱形核心與雙翼刃
+        const octaGeo = new THREE.OctahedronGeometry(1.1, 0);
+        octaGeo.scale(1.2, 0.5, 1.5);
+        const core = new THREE.Mesh(octaGeo, coreMat);
+        group.add(core);
+
+        const bladeGeo = new THREE.BoxGeometry(3.2, 0.12, 0.6);
+        const blade = new THREE.Mesh(bladeGeo, hullMat);
+        group.add(blade);
+    }
+
+    group.userData.coreMat = coreMat;
+    return group;
+}
+
+// 建置巨型 Boss「利維坦級空天母艦」（階段一 4 座防空砲台 + 階段二可展開裝甲與高輝光核心）
+function createLeviathanBoss() {
+    const bossGroup = new THREE.Group();
+
+    const hullMat = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        metalness: 0.85,
+        roughness: 0.22
+    });
+    const armorPlateMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        metalness: 0.8,
+        roughness: 0.25
+    });
+    const trimNeonMat = new THREE.MeshStandardMaterial({
+        color: 0xf43f5e,
+        emissive: 0xe11d48,
+        emissiveIntensity: 1.5
+    });
+
+    // 1. 中央巨型龍骨艦體
+    const spineGeo = new THREE.BoxGeometry(7.5, 2.6, 13.5);
+    const spineMesh = new THREE.Mesh(spineGeo, hullMat);
+    bossGroup.add(spineMesh);
+
+    // 艦首重型撞角與霓虹導光條
+    const prowGeo = new THREE.ConeGeometry(4.5, 6.0, 4);
+    prowGeo.rotateX(Math.PI / 2);
+    prowGeo.rotateY(Math.PI / 4);
+    const prowMesh = new THREE.Mesh(prowGeo, hullMat);
+    prowMesh.position.set(0, 0, 8.2);
+    bossGroup.add(prowMesh);
+
+    const trimGeo = new THREE.BoxGeometry(24, 0.2, 0.45);
+    const trimMesh = new THREE.Mesh(trimGeo, trimNeonMat);
+    trimMesh.position.set(0, 1.35, 1.2);
+    bossGroup.add(trimMesh);
+
+    // 2. 階段二高輝光能源核心（初始被左右可動裝甲覆蓋）
+    const coreGeo = new THREE.OctahedronGeometry(2.6, 1);
+    const coreMat = new THREE.MeshStandardMaterial({
+        color: 0xf0abfc,
+        emissive: 0xd946ef,
+        emissiveIntensity: 2.8,
+        roughness: 0.1
+    });
+    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+    coreMesh.position.set(0, 1.2, 1.5);
+    bossGroup.add(coreMesh);
+
+    // 3. 左右可動重裝甲翼（階段二開啟時向外滑開露出核心）
+    const wingPlateGeo = new THREE.BoxGeometry(10.5, 2.0, 9.5);
+    const leftArmorWing = new THREE.Mesh(wingPlateGeo, armorPlateMat);
+    leftArmorWing.position.set(-5.2, 0.8, 0.5);
+    bossGroup.add(leftArmorWing);
+
+    const rightArmorWing = new THREE.Mesh(wingPlateGeo, armorPlateMat);
+    rightArmorWing.position.set(5.2, 0.8, 0.5);
+    bossGroup.add(rightArmorWing);
+
+    // 4. 階段一：左右兩翼共 4 座防空砲台
+    const turretOffsets = [
+        { x: -10.5, z: 3.2 },
+        { x: -6.2,  z: 4.8 },
+        { x: 6.2,   z: 4.8 },
+        { x: 10.5,  z: 3.2 }
+    ];
+    const turretGeo = new THREE.CylinderGeometry(1.1, 1.35, 1.2, 8);
+    const barrelGeo = new THREE.CylinderGeometry(0.24, 0.24, 2.4, 8);
+    barrelGeo.rotateX(Math.PI / 2);
+
+    leviathanBoss.turrets = [];
+    turretOffsets.forEach((pos) => {
+        const tGroup = new THREE.Group();
+        const tMat = new THREE.MeshStandardMaterial({
+            color: 0xf97316,
+            emissive: 0xea580c,
+            emissiveIntensity: 1.8,
+            metalness: 0.6,
+            roughness: 0.2
+        });
+        const baseMesh = new THREE.Mesh(turretGeo, tMat);
+        const barrelMesh = new THREE.Mesh(barrelGeo, hullMat);
+        barrelMesh.position.set(0, 0.2, 1.3);
+        tGroup.add(baseMesh);
+        tGroup.add(barrelMesh);
+        tGroup.position.set(pos.x, 1.5, pos.z);
+        bossGroup.add(tGroup);
+
+        leviathanBoss.turrets.push({
+            mesh: tGroup,
+            mat: tMat,
+            active: true,
+            hp: 320,
+            maxHp: 320,
+            hitFlashTimer: 0
+        });
+    });
+
+    bossGroup.position.set(0, 1, -120);
+    bossGroup.visible = false;
+    scene.add(bossGroup);
+
+    leviathanBoss.group = bossGroup;
+    leviathanBoss.leftArmorWing = leftArmorWing;
+    leviathanBoss.rightArmorWing = rightArmorWing;
+    leviathanBoss.coreMesh = coreMesh;
+    leviathanBoss.coreMat = coreMat;
+}
+
+// ==================== 物件池系統 (Object Pooling) ====================
+function initObjectPools() {
+    // 1. 玩家子彈物件池（包含標準脈衝彈與 Lv.4 貫穿雷射）
+    const bulletGeo = new THREE.CylinderGeometry(0.14, 0.14, 2.4, 8);
+    bulletGeo.rotateX(Math.PI / 2);
+    const bulletMat = new THREE.MeshStandardMaterial({
+        color: 0x67e8f9,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 2.5
+    });
+    const pierceMat = new THREE.MeshStandardMaterial({
+        color: 0xfef08a,
+        emissive: 0x38bdf8,
+        emissiveIntensity: 3.2
+    });
+
+    for (let i = 0; i < CONFIG.bulletPoolSize; i++) {
+        const mesh = new THREE.Mesh(bulletGeo, bulletMat);
+        mesh.visible = false;
+        scene.add(mesh);
+        bulletPool.push({
+            mesh: mesh,
+            baseMat: bulletMat,
+            pierceMat: pierceMat,
+            active: false,
+            vx: 0,
+            vz: -85,
+            damage: 10,
+            piercing: false
+        });
+    }
+
+    // 2. Lv.3 追蹤微飛彈物件池
+    const missileGeo = new THREE.ConeGeometry(0.24, 1.4, 6);
+    missileGeo.rotateX(-Math.PI / 2);
+    const missileMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0xf43f5e,
+        emissiveIntensity: 2.2
+    });
+    for (let i = 0; i < CONFIG.missilePoolSize; i++) {
+        const mesh = new THREE.Mesh(missileGeo, missileMat);
+        mesh.visible = false;
+        scene.add(mesh);
+        missilePool.push({
+            mesh: mesh,
+            active: false,
+            vx: 0,
+            vz: -45,
+            target: null,
+            life: 0,
+            smokeTimer: 0
+        });
+    }
+
+    // 3. 敵方彈幕物件池（重裝砲艇扇形能量球 & 攔截機高速直線雷射）
+    const orbGeo = new THREE.SphereGeometry(0.45, 10, 10);
+    const orbMat = new THREE.MeshStandardMaterial({
+        color: 0xfb923c,
+        emissive: 0xea580c,
+        emissiveIntensity: 2.4
+    });
+    const enemyLaserGeo = new THREE.CylinderGeometry(0.18, 0.18, 4.5, 8);
+    enemyLaserGeo.rotateX(Math.PI / 2);
+    const enemyLaserMat = new THREE.MeshStandardMaterial({
+        color: 0xf43f5e,
+        emissive: 0xe11d48,
+        emissiveIntensity: 3.0
+    });
+
+    for (let i = 0; i < CONFIG.enemyBulletPoolSize; i++) {
+        const mesh = new THREE.Mesh(orbGeo, orbMat);
+        mesh.visible = false;
+        scene.add(mesh);
+        enemyBulletPool.push({
+            mesh: mesh,
+            orbGeo: orbGeo,
+            orbMat: orbMat,
+            laserGeo: enemyLaserGeo,
+            laserMat: enemyLaserMat,
+            active: false,
+            vx: 0,
+            vz: 24,
+            radius: 0.55
+        });
+    }
+
+    // 4. 敵機物件池（偵察機 HP 10、攔截機 HP 40、重裝砲艇 HP 80）
+    const enemyTypes = ['scout', 'scout', 'interceptor', 'gunship'];
+    const aimLineGeo = new THREE.BoxGeometry(0.12, 0.05, 95);
+    const aimLineMat = new THREE.MeshBasicMaterial({
+        color: 0xf43f5e,
+        transparent: true,
+        opacity: 0.55
+    });
+
+    for (let i = 0; i < CONFIG.enemyPoolSize; i++) {
+        const type = enemyTypes[i % enemyTypes.length];
+        const mesh = createEnemyMeshByType(type);
+        mesh.visible = false;
+        scene.add(mesh);
+
+        // 為激光攔截機配置紅色預警瞄準線
+        let aimLine = null;
+        if (type === 'interceptor') {
+            aimLine = new THREE.Mesh(aimLineGeo, aimLineMat);
+            aimLine.visible = false;
+            scene.add(aimLine);
+        }
+
+        const maxHp = type === 'gunship' ? 80 : (type === 'interceptor' ? 40 : 10);
+        enemyPool.push({
+            mesh: mesh,
+            aimLine: aimLine,
+            type: type,
+            active: false,
+            hp: maxHp,
+            maxHp: maxHp,
+            speed: type === 'gunship' ? 16 : (type === 'interceptor' ? 26 : 24),
+            state: 'entering',       // entering / hovering / aiming / dashing
+            stateTimer: 0,
+            targetHoverZ: -18 - Math.random() * 14,
+            hitFlashTimer: 0,
+            radius: type === 'gunship' ? 2.1 : 1.4,
+            baseEmissiveHex: type === 'gunship' ? 0xea580c : (type === 'interceptor' ? 0xc026d3 : 0xe11d48)
+        });
+    }
+
+    // 5. 爆炸與煙霧粒子物件池
+    const particleGeo = new THREE.BoxGeometry(0.32, 0.32, 0.32);
+    const explosionMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const smokeMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.65 });
+
+    for (let i = 0; i < CONFIG.particlePoolSize; i++) {
+        const mesh = new THREE.Mesh(particleGeo, explosionMat);
+        mesh.visible = false;
+        scene.add(mesh);
+        particlePool.push({
+            mesh: mesh,
+            explosionMat: explosionMat,
+            smokeMat: smokeMat,
+            active: false,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            life: 0,
+            maxLife: 0.45
+        });
+    }
+
+    // 6. 掉落物物件池（紅色武器進化能量核、綠色護盾修復包 & EMP 轉化金色加分粒）
+    const corePickupGeo = new THREE.OctahedronGeometry(0.85, 0);
+    const corePickupMat = new THREE.MeshStandardMaterial({
+        color: 0xf43f5e,
+        emissive: 0xe11d48,
+        emissiveIntensity: 2.6
+    });
+    const shieldPickupGeo = new THREE.BoxGeometry(1.15, 1.15, 1.15);
+    const shieldPickupMat = new THREE.MeshStandardMaterial({
+        color: 0x34d399,
+        emissive: 0x10b981,
+        emissiveIntensity: 2.5
+    });
+    const bonusOrbGeo = new THREE.SphereGeometry(0.4, 8, 8);
+    const bonusOrbMat = new THREE.MeshStandardMaterial({
+        color: 0xfde047,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 2.5
+    });
+
+    for (let i = 0; i < CONFIG.pickupPoolSize; i++) {
+        const mesh = new THREE.Mesh(corePickupGeo, corePickupMat);
+        mesh.visible = false;
+        scene.add(mesh);
+        pickupPool.push({
+            mesh: mesh,
+            coreGeo: corePickupGeo,
+            coreMat: corePickupMat,
+            shieldGeo: shieldPickupGeo,
+            shieldMat: shieldPickupMat,
+            bonusGeo: bonusOrbGeo,
+            bonusMat: bonusOrbMat,
+            type: 'weapon_core', // 'weapon_core' | 'shield_pack' | 'emp_bonus'
+            active: false,
+            vz: 14
+        });
+    }
+
+    // 6.5 隕石帶物件池（01:15 – 01:45 隕石火網階段使用）
+    const asteroidGeo = new THREE.DodecahedronGeometry(1.6, 0);
+    const asteroidMat = new THREE.MeshStandardMaterial({
+        color: 0x475569,
+        emissive: 0x7f1d1d,
+        emissiveIntensity: 0.7,
+        roughness: 0.85,
+        metalness: 0.2
+    });
+    for (let i = 0; i < CONFIG.asteroidPoolSize; i++) {
+        const mesh = new THREE.Mesh(asteroidGeo, asteroidMat);
+        mesh.visible = false;
+        scene.add(mesh);
+        asteroidPool.push({
+            mesh: mesh,
+            active: false,
+            hp: 45,
+            vz: 34,
+            rx: 1.5,
+            ry: 2.0,
+            radius: 1.65
+        });
+    }
+
+    // 6.8 太空防禦障礙物物件池（重裝太空浮標 & 橫向高壓能量柵欄）
+    const pylonGeo = new THREE.CylinderGeometry(1.4, 1.8, 3.6, 8);
+    const pylonMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 0.9,
+        metalness: 0.85,
+        roughness: 0.25
+    });
+    const beamGeo = new THREE.BoxGeometry(10.5, 0.45, 0.45);
+    const beamMat = new THREE.MeshStandardMaterial({
+        color: 0xfef08a,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 2.6,
+        transparent: true,
+        opacity: 0.9
+    });
+
+    for (let i = 0; i < CONFIG.obstaclePoolSize; i++) {
+        const isBarrier = i % 2 === 0; // 一半為橫向能量柵欄，一半為重裝太空浮標
+        const obsGroup = new THREE.Group();
+
+        if (isBarrier) {
+            const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.8, 2.8, 6), pylonMat);
+            leftPost.position.set(-5.2, 0, 0);
+            const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.8, 2.8, 6), pylonMat);
+            rightPost.position.set(5.2, 0, 0);
+            const laserBeam = new THREE.Mesh(beamGeo, beamMat);
+            obsGroup.add(leftPost, rightPost, laserBeam);
+        } else {
+            const pylonMesh = new THREE.Mesh(pylonGeo, pylonMat);
+            obsGroup.add(pylonMesh);
+        }
+
+        obsGroup.visible = false;
+        scene.add(obsGroup);
+        obstaclePool.push({
+            mesh: obsGroup,
+            type: isBarrier ? 'barrier' : 'pylon',
+            active: false,
+            vz: 36,
+            halfWidth: isBarrier ? 5.6 : 1.7,
+            halfDepth: isBarrier ? 0.85 : 1.7,
+            hitCooldown: 0
+        });
+    }
+
+    // 7. 全螢幕 EMP 擴散光環（高輝光金色能量波）
+    const empGeo = new THREE.RingGeometry(0.8, 1.5, 48);
+    empGeo.rotateX(-Math.PI / 2);
+    const empMat = new THREE.MeshBasicMaterial({
+        color: 0xfde047,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.9
+    });
+    empWaveMesh = new THREE.Mesh(empGeo, empMat);
+    empWaveMesh.visible = false;
+    scene.add(empWaveMesh);
+}
+
+// ==================== 物件池發射與生成輔助函式 ====================
+function spawnBullet(x, z, vx, vz, damage = 10, piercing = false) {
+    for (let i = 0; i < bulletPool.length; i++) {
+        const b = bulletPool[i];
+        if (!b.active) {
+            b.active = true;
+            b.mesh.visible = true;
+            b.mesh.position.set(x, 0, z);
+            b.vx = vx;
+            b.vz = vz;
+            b.damage = damage;
+            b.piercing = piercing;
+            b.mesh.material = piercing ? b.pierceMat : b.baseMat;
+            b.mesh.scale.set(piercing ? 1.5 : 1.0, 1.0, piercing ? 1.6 : 1.0);
+            b.mesh.rotation.y = Math.atan2(-vx, -vz);
+            return;
+        }
+    }
+}
+
+function spawnMissile(x, z) {
+    for (let i = 0; i < missilePool.length; i++) {
+        const m = missilePool[i];
+        if (!m.active) {
+            m.active = true;
+            m.mesh.visible = true;
+            m.mesh.position.set(x, 0, z);
+            m.vx = (x < playerGroup.position.x ? -18 : 18);
+            m.vz = -25;
+            m.target = findNearestEnemy(x, z);
+            m.life = 0;
+            m.smokeTimer = 0;
+            return;
+        }
+    }
+}
+
+function spawnEnemyBullet(x, z, vx, vz, isLaser = false) {
+    for (let i = 0; i < enemyBulletPool.length; i++) {
+        const eb = enemyBulletPool[i];
+        if (!eb.active) {
+            eb.active = true;
+            eb.mesh.visible = true;
+            eb.mesh.position.set(x, 0, z);
+            eb.vx = vx;
+            eb.vz = vz;
+            if (isLaser) {
+                eb.mesh.geometry = eb.laserGeo;
+                eb.mesh.material = eb.laserMat;
+                eb.radius = 0.65;
+            } else {
+                eb.mesh.geometry = eb.orbGeo;
+                eb.mesh.material = eb.orbMat;
+                eb.radius = 0.55;
+            }
+            return;
+        }
+    }
+}
+
+function findNearestEnemy(x, z) {
+    let nearest = null;
+    let minDistSq = Infinity;
+    for (let i = 0; i < enemyPool.length; i++) {
+        const e = enemyPool[i];
+        if (!e.active) continue;
+        const dx = e.mesh.position.x - x;
+        const dz = e.mesh.position.z - z;
+        const dSq = dx * dx + dz * dz;
+        if (dSq < minDistSq) {
+            minDistSq = dSq;
+            nearest = e;
+        }
+    }
+    return nearest;
+}
+
+// 生成掉落物（紅色武器進化能量核、綠色護盾修復包 或 EMP 轉化金色加分粒）
+function spawnPickup(x, z, type = 'weapon_core') {
+    for (let i = 0; i < pickupPool.length; i++) {
+        const pk = pickupPool[i];
+        if (!pk.active) {
+            pk.active = true;
+            pk.type = type;
+            pk.mesh.visible = true;
+            pk.mesh.position.set(x, 0, z);
+            if (type === 'weapon_core') {
+                pk.mesh.geometry = pk.coreGeo;
+                pk.mesh.material = pk.coreMat;
+                pk.vz = 14;
+            } else if (type === 'shield_pack') {
+                pk.mesh.geometry = pk.shieldGeo;
+                pk.mesh.material = pk.shieldMat;
+                pk.vz = 13;
+            } else {
+                pk.mesh.geometry = pk.bonusGeo;
+                pk.mesh.material = pk.bonusMat;
+                pk.vz = 0;
+            }
+            return;
+        }
+    }
+}
+
+// 生成高速旋轉隕石（Phase 03 隕石火網階段）
+function spawnAsteroid() {
+    for (let i = 0; i < asteroidPool.length; i++) {
+        const ast = asteroidPool[i];
+        if (!ast.active) {
+            ast.active = true;
+            ast.mesh.visible = true;
+            const spawnX = (Math.random() - 0.5) * (CONFIG.playfieldWidth * 1.8);
+            const scale = 0.8 + Math.random() * 0.9;
+            ast.mesh.scale.set(scale, scale, scale);
+            ast.mesh.position.set(spawnX, 0, -102);
+            ast.hp = Math.round(35 * scale);
+            ast.vz = 30 + Math.random() * 14;
+            ast.rx = (Math.random() - 0.5) * 4;
+            ast.ry = (Math.random() - 0.5) * 4;
+            ast.radius = 1.55 * scale;
+            return;
+        }
+    }
+}
+
+// 生成太空防禦障礙物（能量柵欄 / 重裝太空浮標）
+function spawnObstacle() {
+    const startIdx = Math.floor(Math.random() * obstaclePool.length);
+    for (let offset = 0; offset < obstaclePool.length; offset++) {
+        const obs = obstaclePool[(startIdx + offset) % obstaclePool.length];
+        if (!obs.active) {
+            obs.active = true;
+            obs.mesh.visible = true;
+            obs.hitCooldown = 0;
+            const maxSpawnX = CONFIG.playfieldWidth - obs.halfWidth - 1.5;
+            const spawnX = (Math.random() - 0.5) * (maxSpawnX * 2);
+            obs.mesh.position.set(spawnX, 0, -105);
+            // 隨著關卡時間推進，障礙物移動速度略微提升
+            obs.vz = 36 + Math.min(gameState.stageTime / 10, 12);
+            return;
+        }
+    }
+}
+
+// 取得當前時間軸對應的關卡階段設定
+function getCurrentTimelinePhase() {
+    for (let i = 0; i < STAGE_TIMELINE.length; i++) {
+        if (gameState.stageTime >= STAGE_TIMELINE[i].start && gameState.stageTime < STAGE_TIMELINE[i].end) {
+            return STAGE_TIMELINE[i];
+        }
+    }
+    return STAGE_TIMELINE[STAGE_TIMELINE.length - 1];
+}
+
+// 顯示動態事件橫幅（階段切換、補給空投、WARNING Boss 警報）
+let bannerTimeout = null;
+function showEventBanner(title, subtitle, isWarning = false, duration = 2600) {
+    const banner = document.getElementById('event-banner');
+    const box = document.getElementById('event-banner-box');
+    const titleEl = document.getElementById('event-banner-title');
+    const subEl = document.getElementById('event-banner-sub');
+
+    titleEl.textContent = title;
+    subEl.textContent = subtitle;
+
+    if (isWarning) {
+        box.className = "bg-rose-950/90 border-2 border-rose-500 px-8 py-4 rounded-2xl shadow-2xl shadow-rose-500/50 animate-pulse";
+        titleEl.className = "text-2xl sm:text-4xl font-black text-rose-400 tracking-widest neon-text-pink";
+    } else {
+        box.className = "bg-slate-900/90 border-2 border-cyan-400 px-8 py-4 rounded-2xl shadow-2xl shadow-cyan-500/40";
+        titleEl.className = "text-xl sm:text-3xl font-black text-cyan-300 tracking-widest neon-text-cyan";
+    }
+
+    banner.classList.remove('hidden');
+    if (bannerTimeout) clearTimeout(bannerTimeout);
+    bannerTimeout = setTimeout(() => {
+        banner.classList.add('hidden');
+    }, duration);
+}
+
+// 啟動巨型 Boss「利維坦級空天母艦」戰鬥
+function activateLeviathanBoss() {
+    if (leviathanBoss.active) return;
+    leviathanBoss.active = true;
+    leviathanBoss.phase = 1;
+    leviathanBoss.coreHp = leviathanBoss.maxCoreHp;
+    leviathanBoss.attackTimer = 1.0;
+    leviathanBoss.spiralAngle = 0;
+
+    leviathanBoss.group.visible = true;
+    leviathanBoss.group.position.set(0, 1.2, -95);
+    leviathanBoss.leftArmorWing.position.set(-5.2, 0.8, 0.5);
+    leviathanBoss.rightArmorWing.position.set(5.2, 0.8, 0.5);
+
+    leviathanBoss.turrets.forEach(t => {
+        t.active = true;
+        t.hp = t.maxHp;
+        t.mesh.visible = true;
+        t.mat.emissive.setHex(0xea580c);
+    });
+
+    // Boss 登場時攝影機微幅拉遠以完整容納巨型機身
+    gameState.targetCamY = 31;
+    gameState.targetCamZ = 31;
+
+    document.getElementById('boss-hud').classList.remove('hidden');
+    updateBossHUD();
+}
+
+// 更新 Boss 雙階段血條 UI
+function updateBossHUD() {
+    if (!leviathanBoss.active) return;
+    const phaseLabel = document.getElementById('boss-phase-label');
+    const hpBar = document.getElementById('boss-hp-bar');
+
+    if (leviathanBoss.phase === 1) {
+        const aliveTurrets = leviathanBoss.turrets.filter(t => t.active).length;
+        const totalTurretHp = leviathanBoss.turrets.reduce((sum, t) => sum + Math.max(0, t.hp), 0);
+        const maxTotalTurretHp = leviathanBoss.turrets.reduce((sum, t) => sum + t.maxHp, 0);
+        phaseLabel.textContent = `階段一：防空砲台 (${aliveTurrets}/4)`;
+        hpBar.style.width = `${(totalTurretHp / maxTotalTurretHp) * 100}%`;
+    } else {
+        phaseLabel.textContent = `階段二：核心暴露 // 總攻`;
+        hpBar.style.width = `${(Math.max(0, leviathanBoss.coreHp) / leviathanBoss.maxCoreHp) * 100}%`;
+    }
+}
+
+// 從物件池生成敵機（支援時間軸權重指定機型）
+function spawnEnemy(forcedType = null) {
+    const activePhase = getCurrentTimelinePhase();
+    const weights = activePhase.weights;
+    if (!forcedType && (!weights || weights.length === 0)) return;
+
+    const desiredType = forcedType || weights[Math.floor(Math.random() * weights.length)];
+    const startIdx = Math.floor(Math.random() * enemyPool.length);
+
+    for (let offset = 0; offset < enemyPool.length; offset++) {
+        const e = enemyPool[(startIdx + offset) % enemyPool.length];
+        if (!e.active && e.type === desiredType) {
+            e.active = true;
+            e.mesh.visible = true;
+            const spawnX = (Math.random() - 0.5) * (CONFIG.playfieldWidth * 1.65);
+            e.mesh.position.set(spawnX, 0, -98);
+            e.hp = e.maxHp;
+            e.state = 'entering';
+            e.stateTimer = 0;
+            e.targetHoverZ = -22 - Math.random() * 14;
+            const bonusSpeed = Math.min(gameState.stageTime / 12, 10);
+            e.speed = (e.type === 'gunship' ? 22 : (e.type === 'interceptor' ? 30 : 26)) + Math.random() * 5 + bonusSpeed;
+            e.hitFlashTimer = 0;
+            e.mesh.userData.coreMat.emissive.setHex(e.baseEmissiveHex);
+            if (e.aimLine) e.aimLine.visible = false;
+            return;
+        }
+    }
+}
+
+// 從物件池觸發粒子效果（爆炸火花 或 飛彈白色煙霧尾跡）
+function spawnExplosion(x, y, z, count = 14, isSmoke = false) {
+    let spawned = 0;
+    for (let i = 0; i < particlePool.length; i++) {
+        const p = particlePool[i];
+        if (!p.active) {
+            p.active = true;
+            p.mesh.visible = true;
+            p.mesh.position.set(x, y, z);
+            p.mesh.material = isSmoke ? p.smokeMat : p.explosionMat;
+            const baseScale = isSmoke ? 0.7 : 1.0;
+            p.mesh.scale.set(baseScale, baseScale, baseScale);
+            
+            if (isSmoke) {
+                p.vx = (Math.random() - 0.5) * 2;
+                p.vy = (Math.random() - 0.5) * 2;
+                p.vz = 8 + Math.random() * 6;
+                p.maxLife = 0.25;
+            } else {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 8 + Math.random() * 22;
+                p.vx = Math.cos(angle) * speed;
+                p.vy = (Math.random() - 0.3) * 18;
+                p.vz = Math.sin(angle) * speed;
+                p.maxLife = 0.35 + Math.random() * 0.25;
+            }
+            p.life = 0;
+
+            spawned++;
+            if (spawned >= count) break;
+        }
+    }
+}
+
+// 觸發全螢幕 EMP 衝擊波（消除全屏子彈轉化為加分粒 + 2 秒無敵護盾 + 全屏清敵）
+function triggerEmpWave() {
+    if (!gameState.isPlaying || gameState.empCharge < 100) return;
+
+    gameState.empCharge = 0;
+    gameState.invincibleTimer = 2.0; // 給予 2 秒無敵護盾
+    playerShieldMesh.visible = true;
+
+    empWaveActive = true;
+    empWaveRadius = 1;
+    empWaveMesh.visible = true;
+    empWaveMesh.position.copy(playerGroup.position);
+    empWaveMesh.scale.set(1, 1, 1);
+    empWaveMesh.material.opacity = 0.95;
+
+    // 瞬間清除畫面內所有敵方子彈，並轉化為自動飛向戰機的金色加分道具！
+    for (let i = 0; i < enemyBulletPool.length; i++) {
+        const eb = enemyBulletPool[i];
+        if (eb.active) {
+            eb.active = false;
+            eb.mesh.visible = false;
+            spawnPickup(eb.mesh.position.x, eb.mesh.position.z, 'emp_bonus');
+        }
+    }
+
+    gameState.cameraShake = 0.85;
+    playEmpSound();
+    updateHUD();
+}
+
+// ==================== 遊戲核心邏輯更新 ====================
+function updateGame(dt, elapsedTime) {
+    // 1. 無限滾動地面、建築群與高空視差流光
+    const scrollSpeed = gameState.isPlaying ? 58 : 26;
+    gridHelper1.position.z += scrollSpeed * dt;
+    gridHelper2.position.z += scrollSpeed * dt;
+
+    if (gridHelper1.position.z >= 120) gridHelper1.position.z = gridHelper2.position.z - 160;
+    if (gridHelper2.position.z >= 120) gridHelper2.position.z = gridHelper1.position.z - 160;
+
+    for (let i = 0; i < envBuildings.length; i++) {
+        const b = envBuildings[i];
+        b.position.z += scrollSpeed * dt;
+        if (b.position.z > 45) {
+            resetBuildingPosition(b, false);
+        }
+    }
+
+    // 高空視差雲層流光快速掠過
+    for (let i = 0; i < highAltitudeClouds.length; i++) {
+        const c = highAltitudeClouds[i];
+        c.mesh.position.z += scrollSpeed * c.speedMultiplier * dt;
+        if (c.mesh.position.z > 35) {
+            c.mesh.position.z = -125 - Math.random() * 30;
+            c.mesh.position.x = (Math.random() - 0.5) * 70;
+        }
+    }
+
+    // 引擎雙層電漿尾焰動態脈動（若處於撞擊減速狀態，尾焰轉為暗橘色受損警示）
+    const isSlowed = gameState.slowdownTimer > 0;
+    const flamePulse = (isSlowed ? 0.45 : 0.85) + Math.sin(elapsedTime * (isSlowed ? 25 : 50)) * 0.25;
+    engineFlameLeft.material.emissive.setHex(isSlowed ? 0xf97316 : 0x22d3ee);
+    engineFlameRight.material.emissive.setHex(isSlowed ? 0xf97316 : 0x22d3ee);
+    engineFlameLeft.scale.set(1, 1, flamePulse);
+    engineFlameRight.scale.set(1, 1, flamePulse);
+    engineCoreLeft.scale.set(1, 1, 0.9 + Math.cos(elapsedTime * 60) * 0.2);
+    engineCoreRight.scale.set(1, 1, 0.9 + Math.cos(elapsedTime * 60) * 0.2);
+
+    // Lv.4 浮游砲陣列旋轉與無敵護盾更新
+    if (gameState.weaponLevel >= 4) {
+        funnelLeft.visible = true;
+        funnelRight.visible = true;
+        funnelLeft.rotation.y = elapsedTime * 5;
+        funnelRight.rotation.y = -elapsedTime * 5;
+        funnelLeft.position.y = 0.3 + Math.sin(elapsedTime * 6) * 0.2;
+        funnelRight.position.y = 0.3 + Math.cos(elapsedTime * 6) * 0.2;
+    } else {
+        funnelLeft.visible = false;
+        funnelRight.visible = false;
+    }
+
+    if (gameState.invincibleTimer > 0) {
+        gameState.invincibleTimer = Math.max(0, gameState.invincibleTimer - dt);
+        playerShieldMesh.visible = true;
+        playerShieldMesh.rotation.y += 3.5 * dt;
+        playerShieldMesh.rotation.x += 2.0 * dt;
+        if (gameState.invincibleTimer <= 0) {
+            playerShieldMesh.visible = false;
+            updateHUD();
+        }
+    }
+
+    if (!gameState.isPlaying) {
+        // 待機自動巡航展示
+        playerGroup.position.x = Math.sin(elapsedTime * 1.5) * 6;
+        playerGroup.rotation.z = -Math.cos(elapsedTime * 1.5) * 0.35;
+        return;
+    }
+
+    // 1.5 第四階段：3 分鐘關卡時間軸推進與動態環境過渡
+    gameState.stageTime += dt;
+    const currentPhase = getCurrentTimelinePhase();
+
+    // 偵測階段切換並觸發演出提示
+    if (gameState.currentPhaseId !== currentPhase.id) {
+        gameState.currentPhaseId = currentPhase.id;
+        if (currentPhase.id === 'phase2') {
+            showEventBanner('防空走廊 // CORRIDOR', '進入峽谷防空陣地，注意兩側高塔與重裝砲艇！', false);
+        } else if (currentPhase.id === 'phase3') {
+            showEventBanner('⚠️ 隕石與防空火網 ⚠️', '警報！密集小行星帶襲來，善用 EMP 衝擊波突圍！', true);
+            playAlarmSound();
+        } else if (currentPhase.id === 'phase4') {
+            showEventBanner('⚠️ WARNING // BOSS APPROACHING', '偵測到超巨型重力反應：利維坦級空天母艦接近中！', true, 4000);
+            playAlarmSound();
+            // 1:45 空投 1 個護盾修復包與 1 個紅色武器升級核
+            if (!gameState.supplyDropped) {
+                gameState.supplyDropped = true;
+                spawnPickup(-5, -35, 'shield_pack');
+                spawnPickup(5, -35, 'weapon_core');
+            }
+        } else if (currentPhase.id === 'phase5') {
+            activateLeviathanBoss();
+        }
+    }
+
+    // 2. 玩家戰機移動與 Z 軸側傾 (Roll) 物理姿態（包含撞擊障礙物減速懲罰）
+    if (gameState.slowdownTimer > 0) {
+        gameState.slowdownTimer = Math.max(0, gameState.slowdownTimer - dt);
+    }
+    const speedFactor = gameState.slowdownTimer > 0 ? 0.45 : 1.0; // 減速時僅剩 45% 機動速度
+    const moveSpeed = 34 * speedFactor;
+    const lerpSpeed = 14 * speedFactor;
+
+    if (!input.pointerActive) {
+        if (input.left) input.targetX -= moveSpeed * dt;
+        if (input.right) input.targetX += moveSpeed * dt;
+        if (input.up) input.targetZ -= moveSpeed * dt;
+        if (input.down) input.targetZ += moveSpeed * dt;
+    }
+
+    // 邊界限制
+    input.targetX = Math.max(-CONFIG.playfieldWidth, Math.min(CONFIG.playfieldWidth, input.targetX));
+    input.targetZ = Math.max(CONFIG.playfieldDepthMin, Math.min(CONFIG.playfieldDepthMax, input.targetZ));
+
+    // 平滑阻尼插值 (Lerp)
+    const prevX = playerGroup.position.x;
+    const prevZ = playerGroup.position.z;
+    playerGroup.position.x += (input.targetX - playerGroup.position.x) * Math.min(1, dt * lerpSpeed);
+    playerGroup.position.z += (input.targetZ - playerGroup.position.z) * Math.min(1, dt * lerpSpeed);
+
+    // 計算橫向與縱向速度，綁定側傾角 (最大 ±35度 ≈ 0.61 rad) 與俯仰角
+    const vx = (playerGroup.position.x - prevX) / Math.max(dt, 0.001);
+    const vz = (playerGroup.position.z - prevZ) / Math.max(dt, 0.001);
+    const targetRoll = THREE.MathUtils.clamp(-vx * 0.022, -0.61, 0.61);
+    const targetPitch = THREE.MathUtils.clamp(vz * 0.01, -0.25, 0.25);
+
+    playerGroup.rotation.z += (targetRoll - playerGroup.rotation.z) * Math.min(1, dt * 12);
+    playerGroup.rotation.x += (targetPitch - playerGroup.rotation.x) * Math.min(1, dt * 12);
+
+    // 3. 武器 Lv.1 ~ Lv.4 自動連射系統
+    if (input.fire && (elapsedTime - gameState.lastFireTime >= CONFIG.fireRate)) {
+        gameState.lastFireTime = elapsedTime;
+        const px = playerGroup.position.x;
+        const pz = playerGroup.position.z;
+
+        // Lv.1 基礎脈衝砲：雙發直線高速雷射
+        spawnBullet(px - 0.85, pz - 1.5, 0, -88, 10, false);
+        spawnBullet(px + 0.85, pz - 1.5, 0, -88, 10, false);
+
+        // Lv.2 擴散電漿砲：增加兩側 ±15 度斜向散射
+        if (gameState.weaponLevel >= 2) {
+            const angle15 = 15 * (Math.PI / 180);
+            const speed = 86;
+            const spreadVx = Math.sin(angle15) * speed;
+            const spreadVz = -Math.cos(angle15) * speed;
+            spawnBullet(px - 1.6, pz - 0.8, -spreadVx, spreadVz, 9, false);
+            spawnBullet(px + 1.6, pz - 0.8, spreadVx, spreadVz, 9, false);
+        }
+
+        // Lv.4 浮游砲陣列：兩側浮游砲同步發射高傷害貫穿雷射
+        if (gameState.weaponLevel >= 4) {
+            spawnBullet(px - 3.4, pz - 0.5, 0, -95, 14, true);
+            spawnBullet(px + 3.4, pz - 0.5, 0, -95, 14, true);
+        }
+
+        playLaserSound();
+    }
+
+    // Lv.3 追蹤微飛彈：每 0.8 秒額外發射 2 枚自動鎖定最近敵機的追蹤飛彈
+    if (input.fire && gameState.weaponLevel >= 3 && (elapsedTime - gameState.lastMissileTime >= CONFIG.missileInterval)) {
+        gameState.lastMissileTime = elapsedTime;
+        spawnMissile(playerGroup.position.x - 1.8, playerGroup.position.z);
+        spawnMissile(playerGroup.position.x + 1.8, playerGroup.position.z);
+    }
+
+    // 4. 依時間軸節奏生成敵機與隕石帶
+    if (elapsedTime - gameState.lastSpawnTime >= currentPhase.spawnInterval) {
+        gameState.lastSpawnTime = elapsedTime;
+        spawnEnemy();
+    }
+
+    if (currentPhase.asteroidsActive && (elapsedTime - gameState.lastAsteroidTime >= 0.42)) {
+        gameState.lastAsteroidTime = elapsedTime;
+        spawnAsteroid();
+    }
+
+    // 週期性生成太空防禦障礙物（非 Boss 戰期間穩定出現，考驗閃避走位）
+    const obstacleInterval = currentPhase.id === 'phase2' ? 2.1 : 3.2;
+    if (!currentPhase.bossFight && (elapsedTime - gameState.lastObstacleTime >= obstacleInterval)) {
+        gameState.lastObstacleTime = elapsedTime;
+        spawnObstacle();
+    }
+
+    // 5. 更新玩家子彈物件池
+    for (let i = 0; i < bulletPool.length; i++) {
+        const b = bulletPool[i];
+        if (!b.active) continue;
+
+        b.mesh.position.x += b.vx * dt;
+        b.mesh.position.z += b.vz * dt;
+
+        // 超出遠處邊界回收進物件池
+        if (b.mesh.position.z < -110 || Math.abs(b.mesh.position.x) > 45) {
+            b.active = false;
+            b.mesh.visible = false;
+        }
+    }
+
+    // 5.5 更新 Lv.3 追蹤微飛彈物件池（含白色煙霧軌跡）
+    for (let i = 0; i < missilePool.length; i++) {
+        const m = missilePool[i];
+        if (!m.active) continue;
+
+        m.life += dt;
+        m.smokeTimer += dt;
+        if (m.smokeTimer >= 0.03) {
+            m.smokeTimer = 0;
+            spawnExplosion(m.mesh.position.x, 0, m.mesh.position.z + 0.6, 1, true);
+        }
+
+        // 若目標已死亡則重新搜尋最近敵機
+        if (!m.target || !m.target.active) {
+            m.target = findNearestEnemy(m.mesh.position.x, m.mesh.position.z);
+        }
+
+        if (m.target && m.target.active) {
+            const dx = m.target.mesh.position.x - m.mesh.position.x;
+            const dz = m.target.mesh.position.z - m.mesh.position.z;
+            const dist = Math.hypot(dx, dz) || 1;
+            const desiredVx = (dx / dist) * 65;
+            const desiredVz = (dz / dist) * 65;
+            m.vx += (desiredVx - m.vx) * Math.min(1, dt * 8);
+            m.vz += (desiredVz - m.vz) * Math.min(1, dt * 8);
+        } else {
+            m.vz = -65;
+        }
+
+        m.mesh.position.x += m.vx * dt;
+        m.mesh.position.z += m.vz * dt;
+        m.mesh.rotation.y = Math.atan2(-m.vx, -m.vz);
+
+        // 飛彈碰撞敵機判定
+        for (let j = 0; j < enemyPool.length; j++) {
+            const e = enemyPool[j];
+            if (!e.active) continue;
+            const dx = e.mesh.position.x - m.mesh.position.x;
+            const dz = e.mesh.position.z - m.mesh.position.z;
+            if (dx * dx + dz * dz < (e.radius + 1.0) * (e.radius + 1.0)) {
+                m.active = false;
+                m.mesh.visible = false;
+                spawnExplosion(m.mesh.position.x, 0, m.mesh.position.z, 10, false);
+                e.hp -= 28;
+                e.hitFlashTimer = 0.05;
+                e.mesh.userData.coreMat.emissive.setHex(0xffffff);
+                if (e.hp <= 0) destroyEnemy(e, false);
+                break;
+            }
+        }
+
+        // 若處於 Boss 戰則飛彈也可命中利維坦
+        if (m.active && leviathanBoss.active) {
+            const bdx = leviathanBoss.group.position.x - m.mesh.position.x;
+            const bdz = leviathanBoss.group.position.z - m.mesh.position.z;
+            if (bdx * bdx + bdz * bdz < 45) {
+                m.active = false;
+                m.mesh.visible = false;
+                spawnExplosion(m.mesh.position.x, 0, m.mesh.position.z, 10, false);
+                if (leviathanBoss.phase === 1) {
+                    const targetTurret = leviathanBoss.turrets.find(t => t.active);
+                    if (targetTurret) {
+                        targetTurret.hp -= 30;
+                        if (targetTurret.hp <= 0) {
+                            targetTurret.active = false;
+                            targetTurret.mesh.visible = false;
+                            gameState.score += 1500;
+                        }
+                        updateBossHUD();
+                    }
+                } else {
+                    leviathanBoss.coreHp -= 35;
+                    updateBossHUD();
+                }
+            }
+        }
+
+        if (m.life > 3.0 || m.mesh.position.z < -110) {
+            m.active = false;
+            m.mesh.visible = false;
+        }
+    }
+
+    // 5.7 更新敵方彈幕物件池
+    for (let i = 0; i < enemyBulletPool.length; i++) {
+        const eb = enemyBulletPool[i];
+        if (!eb.active) continue;
+
+        eb.mesh.position.x += eb.vx * dt;
+        eb.mesh.position.z += eb.vz * dt;
+
+        // 碰撞玩家戰機判定
+        const dx = eb.mesh.position.x - playerGroup.position.x;
+        const dz = eb.mesh.position.z - playerGroup.position.z;
+        if (dx * dx + dz * dz < (eb.radius + 1.15) * (eb.radius + 1.15)) {
+            eb.active = false;
+            eb.mesh.visible = false;
+            if (gameState.invincibleTimer <= 0) {
+                damagePlayer(15);
+            }
+            continue;
+        }
+
+        if (eb.mesh.position.z > 32 || Math.abs(eb.mesh.position.x) > 45 || eb.mesh.position.z < -115) {
+            eb.active = false;
+            eb.mesh.visible = false;
+        }
+    }
+
+    // 5.9 更新掉落物物件池（紅色武器進化能量核 / 綠色護盾修復包 / EMP 金色加分粒）
+    for (let i = 0; i < pickupPool.length; i++) {
+        const pk = pickupPool[i];
+        if (!pk.active) continue;
+
+        pk.mesh.rotation.y += 3.5 * dt;
+        pk.mesh.rotation.x += 2.0 * dt;
+
+        if (pk.type === 'emp_bonus') {
+            // EMP 轉化金色加分粒自動高速磁吸飛向戰機
+            const dx = playerGroup.position.x - pk.mesh.position.x;
+            const dz = playerGroup.position.z - pk.mesh.position.z;
+            const dist = Math.hypot(dx, dz) || 1;
+            pk.mesh.position.x += (dx / dist) * 52 * dt;
+            pk.mesh.position.z += (dz / dist) * 52 * dt;
+        } else {
+            pk.mesh.position.z += pk.vz * dt;
+        }
+
+        // 玩家拾取判定（紅色能量核 / 綠色護盾修復包 / EMP 金色加分粒）
+        const dx = pk.mesh.position.x - playerGroup.position.x;
+        const dz = pk.mesh.position.z - playerGroup.position.z;
+        if (dx * dx + dz * dz < 6.5) {
+            pk.active = false;
+            pk.mesh.visible = false;
+            if (pk.type === 'weapon_core') {
+                upgradeWeapon();
+            } else if (pk.type === 'shield_pack') {
+                gameState.hp = Math.min(100, gameState.hp + 40);
+                gameState.score += 500;
+                playPowerupSound();
+                updateHUD();
+            } else {
+                gameState.score += 150;
+                updateHUD();
+            }
+            continue;
+        }
+
+        if (pk.mesh.position.z > 32) {
+            pk.active = false;
+            pk.mesh.visible = false;
+        }
+    }
+
+    // 5.95 更新隕石帶物件池（Phase 03 隕石火網）
+    for (let i = 0; i < asteroidPool.length; i++) {
+        const ast = asteroidPool[i];
+        if (!ast.active) continue;
+
+        ast.mesh.position.z += ast.vz * dt;
+        ast.mesh.rotation.x += ast.rx * dt;
+        ast.mesh.rotation.y += ast.ry * dt;
+
+        // 玩家子彈擊碎隕石
+        for (let j = 0; j < bulletPool.length; j++) {
+            const b = bulletPool[j];
+            if (!b.active) continue;
+            const dx = ast.mesh.position.x - b.mesh.position.x;
+            const dz = ast.mesh.position.z - b.mesh.position.z;
+            if (dx * dx + dz * dz < (ast.radius + 0.7) * (ast.radius + 0.7)) {
+                if (!b.piercing) {
+                    b.active = false;
+                    b.mesh.visible = false;
+                }
+                ast.hp -= b.damage;
+                if (ast.hp <= 0) {
+                    ast.active = false;
+                    ast.mesh.visible = false;
+                    spawnExplosion(ast.mesh.position.x, 0, ast.mesh.position.z, 12, false);
+                    playExplosionSound();
+                    gameState.score += 120;
+                    updateHUD();
+                }
+                break;
+            }
+        }
+
+        if (!ast.active) continue;
+
+        // EMP 衝擊波震碎隕石
+        if (empWaveActive && ast.mesh.position.distanceTo(empWaveMesh.position) <= empWaveRadius * 1.4) {
+            ast.active = false;
+            ast.mesh.visible = false;
+            spawnExplosion(ast.mesh.position.x, 0, ast.mesh.position.z, 10, false);
+            continue;
+        }
+
+        // 隕石撞擊玩家戰機
+        const pdx = ast.mesh.position.x - playerGroup.position.x;
+        const pdz = ast.mesh.position.z - playerGroup.position.z;
+        if (pdx * pdx + pdz * pdz < (ast.radius + 1.3) * (ast.radius + 1.3)) {
+            ast.active = false;
+            ast.mesh.visible = false;
+            spawnExplosion(ast.mesh.position.x, 0, ast.mesh.position.z, 14, false);
+            if (gameState.invincibleTimer <= 0) {
+                damagePlayer(20);
+            }
+            continue;
+        }
+
+        if (ast.mesh.position.z > 32) {
+            ast.active = false;
+            ast.mesh.visible = false;
+        }
+    }
+
+    // 5.98 更新太空防禦障礙物（高壓能量柵欄 / 重裝太空浮標）與撞擊減速扣血判定
+    for (let i = 0; i < obstaclePool.length; i++) {
+        const obs = obstaclePool[i];
+        if (!obs.active) continue;
+
+        obs.mesh.position.z += obs.vz * dt;
+        if (obs.type === 'pylon') {
+            obs.mesh.rotation.y += 1.8 * dt;
+        }
+        if (obs.hitCooldown > 0) {
+            obs.hitCooldown -= dt;
+        }
+
+        // 玩家子彈擊中重裝障礙物會彈開產生火花（不可輕易摧毀，需繞行閃避）
+        for (let j = 0; j < bulletPool.length; j++) {
+            const b = bulletPool[j];
+            if (!b.active) continue;
+            const dx = Math.abs(obs.mesh.position.x - b.mesh.position.x);
+            const dz = Math.abs(obs.mesh.position.z - b.mesh.position.z);
+            if (dx < obs.halfWidth + 0.3 && dz < obs.halfDepth + 0.8) {
+                if (!b.piercing) {
+                    b.active = false;
+                    b.mesh.visible = false;
+                }
+                spawnExplosion(b.mesh.position.x, 0, b.mesh.position.z, 3, false);
+                if (!b.piercing) break;
+            }
+        }
+
+        // 戰機碰撞障礙物判定（矩形 AABB 精準包圍盒）
+        const pdx = Math.abs(obs.mesh.position.x - playerGroup.position.x);
+        const pdz = Math.abs(obs.mesh.position.z - playerGroup.position.z);
+        if (obs.hitCooldown <= 0 && pdx < (obs.halfWidth + 1.35) && pdz < (obs.halfDepth + 1.25)) {
+            obs.hitCooldown = 0.8; // 防止單次擦撞連續扣血
+            spawnExplosion(playerGroup.position.x, 0, playerGroup.position.z, 18, false);
+            
+            if (gameState.invincibleTimer <= 0) {
+                // 觸發引擎減速 2.5 秒 + 裝甲扣除 18 點
+                gameState.slowdownTimer = 2.5;
+                damagePlayer(18, false); // 撞擊障礙物扣血減速，不額外降武器等級
+            }
+        }
+
+        if (obs.mesh.position.z > 35) {
+            obs.active = false;
+            obs.mesh.visible = false;
+        }
+    }
+
+    // 6. 更新 EMP 衝擊波擴散與全屏清敵
+    if (empWaveActive) {
+        empWaveRadius += 95 * dt;
+        empWaveMesh.scale.set(empWaveRadius, empWaveRadius, 1);
+        empWaveMesh.material.opacity = Math.max(0, 1 - empWaveRadius / 85);
+
+        if (empWaveRadius >= 85) {
+            empWaveActive = false;
+            empWaveMesh.visible = false;
+        }
+    } else if (gameState.empCharge < 100) {
+        // 隨時間自動充能 EMP
+        gameState.empCharge = Math.min(100, gameState.empCharge + (100 / CONFIG.empCooldown) * dt);
+        updateHUD();
+    }
+
+    // 7. 更新敵機物件池與碰撞偵測 (Bounding Sphere)
+    for (let i = 0; i < enemyPool.length; i++) {
+        const e = enemyPool[i];
+        if (!e.active) continue;
+
+        e.stateTimer += dt;
+
+        // 依機型執行專屬 AI 行為與彈幕模式
+        if (e.type === 'scout') {
+            // 偵察無人機：成群 S 型高速俯衝，不發射子彈
+            e.mesh.position.z += e.speed * dt;
+            e.mesh.position.x += Math.sin(elapsedTime * 4.5 + i) * 9 * dt;
+            e.mesh.rotation.z = Math.cos(elapsedTime * 4.5 + i) * 0.4;
+        } else if (e.type === 'gunship') {
+            // 重裝砲艇：懸停於畫面中上方，週期性發射 3 發扇形慢速能量球
+            e.mesh.rotation.y += 1.2 * dt;
+            if (e.state === 'entering') {
+                e.mesh.position.z += e.speed * dt;
+                if (e.mesh.position.z >= e.targetHoverZ) {
+                    e.state = 'hovering';
+                    e.stateTimer = 0.8;
+                }
+            } else if (e.state === 'hovering') {
+                e.mesh.position.x += Math.sin(elapsedTime * 1.8 + i) * 5 * dt;
+                if (e.stateTimer >= 1.8) {
+                    e.stateTimer = 0;
+                    // 發射 3 發扇形慢速能量球
+                    const spreadAngles = [-0.28, 0, 0.28];
+                    spreadAngles.forEach(ang => {
+                        spawnEnemyBullet(
+                            e.mesh.position.x,
+                            e.mesh.position.z + 1.5,
+                            Math.sin(ang) * 20,
+                            Math.cos(ang) * 20,
+                            false
+                        );
+                    });
+                }
+            }
+        } else if (e.type === 'interceptor') {
+            // 激光攔截機：推進定位 -> 投射 1 秒紅色預警瞄準線 -> 發射高速直線雷射並衝刺
+            if (e.state === 'entering') {
+                e.mesh.position.z += e.speed * dt;
+                if (e.mesh.position.z >= -34) {
+                    e.state = 'aiming';
+                    e.stateTimer = 0;
+                    if (e.aimLine) {
+                        e.aimLine.visible = true;
+                        e.aimLine.position.set(e.mesh.position.x, -0.5, e.mesh.position.z + 48);
+                    }
+                }
+            } else if (e.state === 'aiming') {
+                if (e.aimLine) {
+                    e.aimLine.position.set(e.mesh.position.x, -0.5, e.mesh.position.z + 48);
+                    e.aimLine.material.opacity = 0.35 + Math.sin(elapsedTime * 35) * 0.35;
+                }
+                if (e.stateTimer >= 1.0) {
+                    // 預警 1 秒結束，發射高速直線雷射！
+                    if (e.aimLine) e.aimLine.visible = false;
+                    spawnEnemyBullet(e.mesh.position.x, e.mesh.position.z + 2.0, 0, 75, true);
+                    e.state = 'dashing';
+                }
+            } else {
+                e.mesh.position.z += (e.speed * 1.45) * dt;
+            }
+        }
+
+        // 受擊閃白還原
+        if (e.hitFlashTimer > 0) {
+            e.hitFlashTimer -= dt;
+            if (e.hitFlashTimer <= 0) {
+                e.mesh.userData.coreMat.emissive.setHex(e.baseEmissiveHex);
+            }
+        }
+
+        // 判定是否被 EMP 衝擊波掃過
+        if (empWaveActive) {
+            const distToEmp = e.mesh.position.distanceTo(empWaveMesh.position);
+            if (distToEmp <= empWaveRadius * 1.4) {
+                destroyEnemy(e, true);
+                continue;
+            }
+        }
+
+        // 判定與子彈碰撞（支援 Lv.4 貫穿雷射不消失繼續穿透後方敵機）
+        for (let j = 0; j < bulletPool.length; j++) {
+            const b = bulletPool[j];
+            if (!b.active) continue;
+
+            const dx = e.mesh.position.x - b.mesh.position.x;
+            const dz = e.mesh.position.z - b.mesh.position.z;
+            if (dx * dx + dz * dz < (e.radius + 0.8) * (e.radius + 0.8)) {
+                if (!b.piercing) {
+                    b.active = false;
+                    b.mesh.visible = false;
+                }
+
+                // 敵機扣血與核心閃白反饋
+                e.hp -= b.damage;
+                e.hitFlashTimer = 0.05;
+                e.mesh.userData.coreMat.emissive.setHex(0xffffff);
+
+                if (e.hp <= 0) {
+                    destroyEnemy(e, false);
+                }
+                if (!b.piercing) break;
+            }
+        }
+
+        if (!e.active) continue;
+
+        // 判定與玩家戰機碰撞
+        const pdx = e.mesh.position.x - playerGroup.position.x;
+        const pdz = e.mesh.position.z - playerGroup.position.z;
+        if (pdx * pdx + pdz * pdz < 5.5) {
+            destroyEnemy(e, false);
+            if (gameState.invincibleTimer <= 0) {
+                damagePlayer(25);
+            }
+            continue;
+        }
+
+        // 飛出螢幕下方回收
+        if (e.mesh.position.z > 30) {
+            e.active = false;
+            e.mesh.visible = false;
+            if (e.aimLine) e.aimLine.visible = false;
+            gameState.combo = 0;
+            updateHUD();
+        }
+    }
+
+    // 8. 更新爆炸粒子物件池
+    for (let i = 0; i < particlePool.length; i++) {
+        const p = particlePool[i];
+        if (!p.active) continue;
+
+        p.life += dt;
+        if (p.life >= p.maxLife) {
+            p.active = false;
+            p.mesh.visible = false;
+            continue;
+        }
+
+        p.mesh.position.x += p.vx * dt;
+        p.mesh.position.y += p.vy * dt;
+        p.mesh.position.z += p.vz * dt;
+        const scale = Math.max(0.01, 1 - (p.life / p.maxLife));
+        p.mesh.scale.set(scale, scale, scale);
+    }
+
+    // 8.5 更新巨型 Boss「利維坦級空天母艦」雙階段頭目戰
+    if (leviathanBoss.active) {
+        updateLeviathanBoss(dt, elapsedTime);
+    }
+
+    // 9. 連擊計時器、攝影機平滑拉遠與鏡頭震動衰減
+    if (gameState.combo > 0) {
+        gameState.comboTimer -= dt;
+        if (gameState.comboTimer <= 0) {
+            gameState.combo = 0;
+            updateHUD();
+        }
+    }
+
+    // Boss 戰時攝影機平滑拉遠（targetCamY / targetCamZ）
+    camera.position.z += (gameState.targetCamZ - camera.position.z) * Math.min(1, dt * 2.5);
+    const baseCamY = camera.position.y + (gameState.targetCamY - camera.position.y) * Math.min(1, dt * 2.5);
+
+    if (gameState.cameraShake > 0) {
+        camera.position.x = (Math.random() - 0.5) * gameState.cameraShake;
+        camera.position.y = baseCamY + (Math.random() - 0.5) * gameState.cameraShake;
+        gameState.cameraShake = Math.max(0, gameState.cameraShake - dt * 3.5);
+    } else {
+        camera.position.x = 0;
+        camera.position.y = baseCamY;
+    }
+
+    updateHUD();
+}
+
+// 巨型 Boss「利維坦級空天母艦」雙階段戰鬥邏輯
+function updateLeviathanBoss(dt, elapsedTime) {
+    const boss = leviathanBoss;
+    // 1. 進場與左右巡航機動
+    if (boss.group.position.z < -26) {
+        boss.group.position.z += 14 * dt;
+    } else {
+        boss.group.position.x = Math.sin(elapsedTime * 0.75) * 11;
+    }
+
+    // 核心持續旋轉發光
+    boss.coreMesh.rotation.y += 2.8 * dt;
+    boss.coreMesh.rotation.x += 1.6 * dt;
+
+    boss.attackTimer += dt;
+
+    if (boss.phase === 1) {
+        // ==================== 階段一：摧毀左右兩翼 4 座防空砲台 ====================
+        let aliveCount = 0;
+        boss.turrets.forEach((turret, idx) => {
+            if (!turret.active) return;
+            aliveCount++;
+
+            if (turret.hitFlashTimer > 0) {
+                turret.hitFlashTimer -= dt;
+                if (turret.hitFlashTimer <= 0) turret.mat.emissive.setHex(0xea580c);
+            }
+
+            // 取得砲台世界座標並檢測玩家子彈碰撞
+            const worldPos = new THREE.Vector3();
+            turret.mesh.getWorldPosition(worldPos);
+
+            for (let j = 0; j < bulletPool.length; j++) {
+                const b = bulletPool[j];
+                if (!b.active) continue;
+                const dx = worldPos.x - b.mesh.position.x;
+                const dz = worldPos.z - b.mesh.position.z;
+                if (dx * dx + dz * dz < 3.4) {
+                    if (!b.piercing) {
+                        b.active = false;
+                        b.mesh.visible = false;
+                    }
+                    turret.hp -= b.damage;
+                    turret.hitFlashTimer = 0.05;
+                    turret.mat.emissive.setHex(0xffffff);
+
+                    if (turret.hp <= 0) {
+                        turret.active = false;
+                        turret.mesh.visible = false;
+                        spawnExplosion(worldPos.x, worldPos.y, worldPos.z, 26, false);
+                        playExplosionSound();
+                        gameState.score += 1500;
+                        gameState.cameraShake = 0.8;
+                    }
+                    updateBossHUD();
+                    if (!b.piercing) break;
+                }
+            }
+        });
+
+        // 砲台輪流齊射彈幕
+        if (boss.attackTimer >= 1.45) {
+            boss.attackTimer = 0;
+            boss.turrets.forEach((turret) => {
+                if (!turret.active) return;
+                const worldPos = new THREE.Vector3();
+                turret.mesh.getWorldPosition(worldPos);
+                // 朝向玩家方向發射扇形雙發能量彈
+                const dx = playerGroup.position.x - worldPos.x;
+                const dz = playerGroup.position.z - worldPos.z;
+                const baseAng = Math.atan2(dx, dz);
+                [-0.14, 0.14].forEach(offset => {
+                    const ang = baseAng + offset;
+                    spawnEnemyBullet(worldPos.x, worldPos.z + 1.2, Math.sin(ang) * 24, Math.cos(ang) * 24, false);
+                });
+            });
+        }
+
+        // 若 4 座防空砲台全數摧毀，自動切換進入階段二！
+        if (aliveCount === 0) {
+            boss.phase = 2;
+            boss.attackTimer = 0;
+            gameState.cameraShake = 1.2;
+            playAlarmSound();
+            showEventBanner('⚠️ 核心裝甲展開 ⚠️', '利維坦主裝甲已解除！集中火力擊破中央能源核心！', true, 3000);
+            updateBossHUD();
+        }
+    } else {
+        // ==================== 階段二：母艦裝甲展開露出核心，發射旋轉彈幕 ====================
+        // 左右重裝甲翼向外滑開
+        boss.leftArmorWing.position.x += (-10.5 - boss.leftArmorWing.position.x) * Math.min(1, dt * 3);
+        boss.rightArmorWing.position.x += (10.5 - boss.rightArmorWing.position.x) * Math.min(1, dt * 3);
+
+        if (boss.hitFlashTimer > 0) {
+            boss.hitFlashTimer -= dt;
+            if (boss.hitFlashTimer <= 0) boss.coreMat.emissive.setHex(0xd946ef);
+        }
+
+        // 釋放華麗的雙螺旋旋轉彈幕 (Spiral Bullet Hell)
+        boss.spiralAngle += 2.4 * dt;
+        if (boss.attackTimer >= 0.16) {
+            boss.attackTimer = 0;
+            const cx = boss.group.position.x;
+            const cz = boss.group.position.z + 2.0;
+            for (let arm = 0; arm < 3; arm++) {
+                const ang = boss.spiralAngle + (arm * (Math.PI * 2 / 3));
+                // 僅向戰場前方半圓區域發射，確保公平可閃避
+                const vx = Math.sin(ang) * 21;
+                const vz = Math.abs(Math.cos(ang)) * 18 + 8;
+                spawnEnemyBullet(cx, cz, vx, vz, false);
+            }
+        }
+
+        // 檢測玩家子彈與追蹤飛彈對中央核心的傷害
+        const coreWorldPos = new THREE.Vector3();
+        boss.coreMesh.getWorldPosition(coreWorldPos);
+
+        for (let j = 0; j < bulletPool.length; j++) {
+            const b = bulletPool[j];
+            if (!b.active) continue;
+            const dx = coreWorldPos.x - b.mesh.position.x;
+            const dz = coreWorldPos.z - b.mesh.position.z;
+            if (dx * dx + dz * dz < 11.0) {
+                if (!b.piercing) {
+                    b.active = false;
+                    b.mesh.visible = false;
+                }
+                boss.coreHp -= b.damage;
+                boss.hitFlashTimer = 0.04;
+                boss.coreMat.emissive.setHex(0xffffff);
+                updateBossHUD();
+                if (!b.piercing) break;
+            }
+        }
+
+        // 擊破利維坦核心 -> 關卡勝利通關！
+        if (boss.coreHp <= 0) {
+            boss.active = false;
+            boss.group.visible = false;
+            document.getElementById('boss-hud').classList.add('hidden');
+            spawnExplosion(coreWorldPos.x, coreWorldPos.y, coreWorldPos.z, 65, false);
+            playExplosionSound();
+            gameState.score += 10000;
+            gameState.cameraShake = 1.6;
+            victoryGame();
+        }
+    }
+}
+
+// 擊毀敵機處理
+function destroyEnemy(enemy, byEmp) {
+    const dropCore = enemy.type === 'gunship'; // 重裝砲艇擊毀必掉紅色武器升級能量核
+    const ex = enemy.mesh.position.x;
+    const ey = enemy.mesh.position.y;
+    const ez = enemy.mesh.position.z;
+
+    enemy.active = false;
+    enemy.mesh.visible = false;
+    if (enemy.aimLine) enemy.aimLine.visible = false;
+
+    spawnExplosion(ex, ey, ez, dropCore ? 24 : 14, false);
+    playExplosionSound();
+
+    if (dropCore) {
+        spawnPickup(ex, ez, 'weapon_core');
+    }
+
+    gameState.combo += 1;
+    gameState.comboTimer = 3.0;
+    const basePoints = enemy.type === 'gunship' ? 400 : (enemy.type === 'interceptor' ? 200 : 100);
+    const points = basePoints * Math.min(gameState.combo, 10);
+    gameState.score += points;
+
+    if (!byEmp) {
+        gameState.empCharge = Math.min(100, gameState.empCharge + 7);
+    }
+    gameState.cameraShake = Math.max(gameState.cameraShake, dropCore ? 0.65 : 0.3);
+    updateHUD();
+}
+
+// 武器進化升級處理 (Lv.1 -> Lv.4)
+function upgradeWeapon() {
+    if (gameState.weaponLevel < 4) {
+        gameState.weaponLevel += 1;
+        gameState.score += 500;
+    } else {
+        // 滿級後拾取額外加分並補充 EMP 能量
+        gameState.score += 1500;
+        gameState.empCharge = Math.min(100, gameState.empCharge + 25);
+    }
+    playPowerupSound();
+    updateHUD();
+}
+
+// 玩家受傷處理（downgradeWeapon = true 時降武器等級，撞擊障礙物則主要懲罰減速與扣血）
+function damagePlayer(amount, downgradeWeapon = true) {
+    gameState.hp = Math.max(0, gameState.hp - amount);
+    gameState.combo = 0;
+    // 被敵機或敵彈擊中時武器等級降 1 級（最低 Lv.1），撞擊障礙物則主要懲罰減速與扣血
+    if (downgradeWeapon && gameState.weaponLevel > 1) {
+        gameState.weaponLevel -= 1;
+    }
+    gameState.cameraShake = 1.1;
+    spawnExplosion(playerGroup.position.x, 0, playerGroup.position.z, 20, false);
+    playExplosionSound();
+    updateHUD();
+
+    if (gameState.hp <= 0) {
+        endGame();
+    }
+}
+
+// ==================== UI 與生命週期控制 ====================
+function updateHUD() {
+    document.getElementById('score-display').textContent = String(gameState.score).padStart(6, '0');
+    document.getElementById('hp-text').textContent = `${gameState.hp}%`;
+    document.getElementById('hp-bar').style.width = `${gameState.hp}%`;
+    document.getElementById('weapon-level-text').textContent = WEAPON_NAMES[gameState.weaponLevel - 1];
+
+    // 更新撞擊障礙物減速狀態警告條
+    const slowWarning = document.getElementById('slow-warning');
+    if (gameState.slowdownTimer > 0) {
+        slowWarning.classList.remove('hidden');
+    } else {
+        slowWarning.classList.add('hidden');
+    }
+
+    // 更新頂部關卡時間軸顯示 (MM:SS / 03:00)
+    const activePhase = getCurrentTimelinePhase();
+    document.getElementById('phase-name').textContent = activePhase.name;
+    const clampedSec = Math.min(180, Math.floor(gameState.stageTime));
+    const mins = String(Math.floor(clampedSec / 60)).padStart(2, '0');
+    const secs = String(clampedSec % 60).padStart(2, '0');
+    document.getElementById('stage-timer').textContent = `${mins}:${secs} / 03:00`;
+    document.getElementById('timeline-bar').style.width = `${Math.min(100, (gameState.stageTime / 180) * 100)}%`;
+
+    const shieldBadge = document.getElementById('shield-badge');
+    if (gameState.invincibleTimer > 0) {
+        shieldBadge.classList.remove('hidden');
+    } else {
+        shieldBadge.classList.add('hidden');
+    }
+
+    const empBar = document.getElementById('emp-bar');
+    const empText = document.getElementById('emp-text');
+    const btnEmp = document.getElementById('btn-emp');
+    empBar.style.width = `${gameState.empCharge}%`;
+
+    if (gameState.empCharge >= 100) {
+        empText.textContent = "READY";
+        empText.className = "text-xs font-bold text-amber-300 animate-pulse";
+        btnEmp.classList.remove('opacity-50', 'cursor-not-allowed');
+    } else {
+        empText.textContent = `${Math.floor(gameState.empCharge)}%`;
+        empText.className = "text-xs font-bold text-slate-400";
+        btnEmp.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    const comboEl = document.getElementById('combo-display');
+    if (gameState.combo > 1) {
+        comboEl.classList.remove('opacity-0');
+        document.getElementById('combo-count').textContent = gameState.combo;
+    } else {
+        comboEl.classList.add('opacity-0');
+    }
+}
+
+function startGame() {
+    initAudio();
+
+    // 重置遊戲與時間軸數據
+    gameState.isPlaying = true;
+    gameState.stageTime = 0;
+    gameState.currentPhaseId = '';
+    gameState.supplyDropped = false;
+    gameState.bossWarningTriggered = false;
+    gameState.score = 0;
+    gameState.combo = 0;
+    gameState.hp = 100;
+    gameState.weaponLevel = 1;
+    gameState.empCharge = 100;
+    gameState.invincibleTimer = 0;
+    gameState.slowdownTimer = 0;
+    gameState.targetCamY = 26;
+    gameState.targetCamZ = 26;
+    input.targetX = 0;
+    input.targetZ = 10;
+    input.fire = true; // 預設開啟自動射擊提升網頁端爽快體驗
+
+    // 重置 Boss 狀態
+    leviathanBoss.active = false;
+    leviathanBoss.group.visible = false;
+    document.getElementById('boss-hud').classList.add('hidden');
+    document.getElementById('event-banner').classList.add('hidden');
+
+    // 清空場上所有物件池殘留實體
+    enemyPool.forEach(e => {
+        e.active = false;
+        e.mesh.visible = false;
+        if (e.aimLine) e.aimLine.visible = false;
+    });
+    asteroidPool.forEach(a => { a.active = false; a.mesh.visible = false; });
+    obstaclePool.forEach(o => { o.active = false; o.mesh.visible = false; });
+    bulletPool.forEach(b => { b.active = false; b.mesh.visible = false; });
+    missilePool.forEach(m => { m.active = false; m.mesh.visible = false; });
+    enemyBulletPool.forEach(eb => { eb.active = false; eb.mesh.visible = false; });
+    pickupPool.forEach(pk => { pk.active = false; pk.mesh.visible = false; });
+    playerShieldMesh.visible = false;
+
+    document.getElementById('menu-overlay').classList.add('hidden');
+    document.getElementById('hud-layer').classList.remove('hidden');
+    updateHUD();
+}
+
+function victoryGame() {
+    gameState.isPlaying = false;
+    input.fire = false;
+
+    document.getElementById('hud-layer').classList.add('hidden');
+    document.getElementById('menu-overlay').classList.remove('hidden');
+    document.getElementById('gameover-stats').classList.remove('hidden');
+
+    const resTitle = document.getElementById('result-title');
+    resTitle.textContent = "🏆 利維坦級空天母艦已擊破 // 任務通關！";
+    resTitle.className = "text-amber-300 font-black text-lg mb-1 neon-text-cyan";
+
+    document.getElementById('final-score').textContent = gameState.score.toLocaleString();
+    document.getElementById('menu-subtitle').textContent = "深空防線全面肅清！你成功守護了星際航道。";
+    document.getElementById('btn-start').textContent = "再次出擊 // 挑戰更高分";
+}
+
+function endGame() {
+    gameState.isPlaying = false;
+    input.fire = false;
+
+    document.getElementById('hud-layer').classList.add('hidden');
+    document.getElementById('menu-overlay').classList.remove('hidden');
+    document.getElementById('gameover-stats').classList.remove('hidden');
+
+    const resTitle = document.getElementById('result-title');
+    resTitle.textContent = "機體受損嚴重 // 任務終止";
+    resTitle.className = "text-rose-400 font-bold text-lg mb-1 neon-text-pink";
+
+    document.getElementById('final-score').textContent = gameState.score.toLocaleString();
+    document.getElementById('menu-subtitle').textContent = "戰機已迫降回收。調整戰術並再次發起星際突襲！";
+    document.getElementById('btn-start').textContent = "重新部署 // 出擊";
+}
+
+// ==================== 音效合成器 (Tone.js 無外部依賴) ====================
+function initAudio() {
+    if (audioInitialized || typeof Tone === 'undefined') return;
+    try {
+        Tone.start();
+        laserSynth = new Tone.Synth({
+            oscillator: { type: 'sawtooth' },
+            envelope: { attack: 0.005, decay: 0.06, sustain: 0, release: 0.02 },
+            volume: -18
+        }).toDestination();
+
+        explosionSynth = new Tone.NoiseSynth({
+            noise: { type: 'brown' },
+            envelope: { attack: 0.01, decay: 0.25, sustain: 0, release: 0.1 },
+            volume: -10
+        }).toDestination();
+
+        empSynth = new Tone.MembraneSynth({
+            pitchDecay: 0.08,
+            octaves: 6,
+            envelope: { attack: 0.01, decay: 0.6, sustain: 0, release: 0.2 },
+            volume: -6
+        }).toDestination();
+
+        powerupSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: 'triangle' },
+            envelope: { attack: 0.01, decay: 0.15, sustain: 0.1, release: 0.2 },
+            volume: -10
+        }).toDestination();
+
+        alarmSynth = new Tone.Synth({
+            oscillator: { type: 'sawtooth' },
+            envelope: { attack: 0.05, decay: 0.3, sustain: 0.2, release: 0.2 },
+            volume: -12
+        }).toDestination();
+
+        audioInitialized = true;
+    } catch (e) {
+        console.warn("Audio init skipped:", e);
+    }
+}
+
+function playLaserSound() {
+    if (!audioInitialized || !laserSynth) return;
+    try {
+        const now = Math.max(Tone.now(), lastLaserTime + 0.02);
+        lastLaserTime = now;
+        // 加入 ±10% 隨機音高變化，避免連射聽覺疲勞
+        const baseFreq = 780 + (gameState.weaponLevel * 60);
+        const freq = baseFreq * (0.9 + Math.random() * 0.2);
+        laserSynth.triggerAttackRelease(freq, "32n", now);
+    } catch (e) {}
+}
+
+function playExplosionSound() {
+    if (!audioInitialized || !explosionSynth) return;
+    try {
+        const now = Math.max(Tone.now(), lastExplosionTime + 0.03);
+        lastExplosionTime = now;
+        explosionSynth.triggerAttackRelease("16n", now);
+    } catch (e) {}
+}
+
+function playEmpSound() {
+    if (!audioInitialized || !empSynth) return;
+    try {
+        const now = Math.max(Tone.now(), lastEmpTime + 0.05);
+        lastEmpTime = now;
+        empSynth.triggerAttackRelease("C1", "4n", now);
+    } catch (e) {}
+}
+
+function playPowerupSound() {
+    if (!audioInitialized || !powerupSynth) return;
+    try {
+        const now = Math.max(Tone.now(), lastPowerupTime + 0.05);
+        lastPowerupTime = now;
+        powerupSynth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "16n", now);
+    } catch (e) {}
+}
+
+function playAlarmSound() {
+    if (!audioInitialized || !alarmSynth) return;
+    try {
+        const now = Math.max(Tone.now(), lastAlarmTime + 0.8);
+        lastAlarmTime = now;
+        alarmSynth.triggerAttackRelease("A3", "8n", now);
+        alarmSynth.triggerAttackRelease("F3", "8n", now + 0.25);
+        alarmSynth.triggerAttackRelease("A3", "8n", now + 0.5);
+    } catch (e) {}
+}
+
+// ==================== 輸入事件監聽 (鍵盤 / 滑鼠 / 觸控) ====================
+function setupEventListeners() {
+    // 視窗大小自適應
+    window.addEventListener('resize', () => {
+        const container = document.getElementById('canvas-wrapper');
+        if (!container) return;
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    // 鍵盤按下與放開
+    window.addEventListener('keydown', (e) => {
+        input.pointerActive = false;
+        switch (e.code) {
+            case 'ArrowLeft':
+            case 'KeyA': input.left = true; break;
+            case 'ArrowRight':
+            case 'KeyD': input.right = true; break;
+            case 'ArrowUp':
+            case 'KeyW': input.up = true; break;
+            case 'ArrowDown':
+            case 'KeyS': input.down = true; break;
+            case 'Space': input.fire = true; break;
+            case 'ShiftLeft':
+            case 'ShiftRight': triggerEmpWave(); break;
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        switch (e.code) {
+            case 'ArrowLeft':
+            case 'KeyA': input.left = false; break;
+            case 'ArrowRight':
+            case 'KeyD': input.right = false; break;
+            case 'ArrowUp':
+            case 'KeyW': input.up = false; break;
+            case 'ArrowDown':
+            case 'KeyS': input.down = false; break;
+        }
+    });
+
+    // 滑鼠與觸控映射至 3D 戰場平面
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const intersectPoint = new THREE.Vector3();
+
+    function updatePointerTarget(clientX, clientY) {
+        if (!gameState.isPlaying) return;
+        input.pointerActive = true;
+        pointer.x = (clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+        if (raycaster.ray.intersectPlane(groundPlane, intersectPoint)) {
+            input.targetX = intersectPoint.x;
+            input.targetZ = intersectPoint.z - 2.5; // 手指/游標略微偏移，避免遮擋戰機本體
+        }
+    }
+
+    window.addEventListener('mousemove', (e) => {
+        if (e.buttons === 1 || input.pointerActive) {
+            updatePointerTarget(e.clientX, e.clientY);
+        }
+    });
+
+    window.addEventListener('mousedown', (e) => {
+        if (e.button === 2) {
+            triggerEmpWave();
+        } else if (e.button === 0 && e.target.tagName === 'CANVAS') {
+            input.fire = true;
+            updatePointerTarget(e.clientX, e.clientY);
+        }
+    });
+
+    // 禁止右鍵選單以便右鍵觸發 EMP 大招
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // 手機觸控支持
+    window.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 0 && e.target.tagName === 'CANVAS') {
+            input.fire = true;
+            updatePointerTarget(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+        if (e.touches.length > 0 && e.target.tagName === 'CANVAS') {
+            updatePointerTarget(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }, { passive: true });
+
+    // UI 按鈕綁定
+    document.getElementById('btn-start').addEventListener('click', startGame);
+    document.getElementById('btn-emp').addEventListener('click', (e) => {
+        e.stopPropagation();
+        triggerEmpWave();
+    });
+
+    // 後處理輝光開關（Step 5.3 效能壓測與畫質切換預留）
+    const btnBloom = document.getElementById('btn-bloom');
+    btnBloom.addEventListener('click', (e) => {
+        e.stopPropagation();
+        CONFIG.bloomEnabled = !CONFIG.bloomEnabled;
+        btnBloom.textContent = CONFIG.bloomEnabled ? '✨ BLOOM: ON' : '✨ BLOOM: OFF';
+        btnBloom.classList.toggle('opacity-60', !CONFIG.bloomEnabled);
+    });
+}
+
+// ==================== 主渲染迴圈 ====================
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.1); // 限制最大時間步長防止切換分頁穿透
+    const elapsedTime = clock.getElapsedTime();
+
+    updateGame(dt, elapsedTime);
+
+    // 若開啟後處理輝光則使用 composer 渲染，否則退回原生 renderer 確保低配裝置流暢度
+    if (CONFIG.bloomEnabled && composer) {
+        composer.render(dt);
+    } else {
+        renderer.render(scene, camera);
+    }
+}
+
+// 確保頁面資源載入完成後啟動引擎
+window.onload = function() {
+    initThreeJS();
+    animate();
+};
+</script>
+</body>
+</html>
